@@ -541,6 +541,14 @@ describe('auditHostTree', () => {
       ).toEqual([]);
     });
 
+    it('ignores pixel rounding in touch target sizes', () => {
+      const button = (height: number) =>
+        pressable({ role: 'button' }, [label('Pay')], { x: 0, y: 0, width: 200, height });
+
+      expect(rules([button(47.99993896484375)], 'android')).toEqual([]);
+      expect(rules([button(47.9)], 'android')).toEqual(['small-touch-target']);
+    });
+
     it('checks the touch target of a standalone text control', () => {
       expect(
         rules([

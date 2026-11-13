@@ -501,7 +501,9 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
       return;
     }
     const size = getTouchSize(node, frame);
-    if (size.width < minTouchTarget || size.height < minTouchTarget) {
+    // Layout snaps to physical pixels, so a 48dp view can measure 47.9999.
+    const isBelowMinimum = (value: number) => Math.round(value * 10) / 10 < minTouchTarget;
+    if (isBelowMinimum(size.width) || isBelowMinimum(size.height)) {
       issues.push({
         rule: 'small-touch-target',
         severity: 'warning',
