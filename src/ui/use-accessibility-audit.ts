@@ -7,7 +7,6 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ACCESSIBILITY_PLUGIN_ID,
-  type AccessibilityEventMap,
   type AccessibilityMethods,
 } from '../shared/messaging';
 import type { AccessibilityAudit } from '../shared/types';
@@ -24,7 +23,7 @@ const describeError = (error: unknown): string => {
 
 /** Owns the RPC client and the most recent audit. */
 export const useAccessibilityAudit = () => {
-  const client = useRozeniteDevToolsClient<AccessibilityEventMap>({
+  const client = useRozeniteDevToolsClient({
     pluginId: ACCESSIBILITY_PLUGIN_ID,
   });
 

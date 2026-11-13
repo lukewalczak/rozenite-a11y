@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { Frame } from '../../shared/types';
+import type { Frame, Platform } from '../../shared/types';
 import { auditHostTree } from '../audit';
 import { TEXT_NODE_TYPE, type HostNode } from '../host-tree';
 
 const LARGE: Frame = { x: 0, y: 0, width: 200, height: 48 };
+const SMALL: Frame = { x: 0, y: 0, width: 24, height: 24 };
 
 const node = (
   type: string,
@@ -38,9 +39,10 @@ const pressable = (
   frame: Frame | null = LARGE,
 ) => node('RCTView', { accessible: true, onClick: () => undefined, ...props }, children, frame);
 
-const audit = (roots: HostNode[], platform = 'ios') => auditHostTree(roots, { platform }).elements;
+const audit = (roots: HostNode[], platform: Platform = 'ios') =>
+  auditHostTree(roots, platform).elements;
 
-const rules = (roots: HostNode[], platform = 'ios') =>
+const rules = (roots: HostNode[], platform: Platform = 'ios') =>
   audit(roots, platform).flatMap((element) => element.issues.map((issue) => issue.rule));
 
 describe('auditHostTree', () => {
@@ -397,7 +399,7 @@ describe('auditHostTree', () => {
       ]);
       expect(rules([node('RCTView', { pointerEvents: 'box-none' }, [button()])])).toEqual([]);
       expect(rules([button({ pointerEvents: 'box-only' })])).toEqual([]);
-      expect(rules([button({ pointerEvents: 'box-none' })])).toEqual(['missing-disabled-state']);
+      expect(rules([button({ pointerEvents: 'box-none' })])).toEqual([]);
     });
 
     it('accepts it when the control is marked disabled', () => {
@@ -515,10 +517,72 @@ describe('auditHostTree', () => {
 
   it('lets an element be measured again by id', () => {
     const frame: Frame = { x: 10, y: 20, width: 100, height: 50 };
-    const result = auditHostTree([pressable({ role: 'button' }, [label('Save')], frame)], {
-      platform: 'ios',
-    });
+    const result = auditHostTree([pressable({ role: 'button' }, [label('Save')], frame)], 'ios');
 
     expect(result.measureById.get(result.elements[0].id)?.()).toEqual(frame);
+  });
+
+  describe('review fixes', () => {
+    it('leaves native sliders to handle increment and decrement themselves', () => {
+      expect(
+        rules([
+          node('RNCSlider', {
+            accessible: true,
+            role: 'slider',
+            accessibilityLabel: 'Volume',
+            'aria-valuenow': 4,
+          }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('checks the touch target of a standalone text control', () => {
+      expect(
+        rules([
+          node(
+            'RCTText',
+            { accessible: true, role: 'link', onPress: () => undefined },
+            [text('Forgot password')],
+            { x: 0, y: 0, width: 120, height: 17 },
+          ),
+        ]),
+      ).toEqual(['small-touch-target']);
+    });
+
+    it('checks touch target and disabled state of a nested control', () => {
+      const [, nested] = audit([
+        pressable({ role: 'button' }, [
+          label('Notifications'),
+          node('RCTView', { pointerEvents: 'none' }, [
+            pressable({ role: 'button', accessibilityLabel: 'Toggle' }, [], SMALL),
+          ]),
+        ]),
+      ]);
+      expect(nested.issues.map((issue) => issue.rule)).toEqual([
+        'nested-interactive',
+        'missing-disabled-state',
+        'small-touch-target',
+      ]);
+    });
+
+    it('flags text with font scaling disabled even when hidden from screen readers', () => {
+      const [element] = audit([
+        node('RCTView', { 'aria-hidden': true }, [
+          node('RCTText', { allowFontScaling: false }, [text('Price')]),
+        ]),
+      ]);
+      expect(element).toMatchObject({
+        label: 'Price',
+        focusable: false,
+        issues: [expect.objectContaining({ rule: 'font-scaling-disabled' })],
+      });
+      expect(
+        audit([
+          node('RCTView', { 'aria-hidden': true, style: { display: 'none' } }, [
+            node('RCTText', { allowFontScaling: false }, [text('Price')]),
+          ]),
+        ]),
+      ).toEqual([]);
+    });
   });
 });

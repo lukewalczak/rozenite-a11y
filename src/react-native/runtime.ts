@@ -58,7 +58,7 @@ export const measureHostInstance = (stateNode: unknown): Frame | null => {
   }
 
   try {
-    // A DOM element on web.
+    // Web DOM elements, and Fabric instances on React Native versions with DOM APIs.
     const element = stateNode as { getBoundingClientRect?: () => Partial<Frame> };
     if (typeof element.getBoundingClientRect === 'function') {
       const rect = element.getBoundingClientRect();

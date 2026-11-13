@@ -11,5 +11,3 @@ export type AccessibilityMethods = {
   /** Pass `id: null` to clear. Ids come from the most recent `runAudit`. */
   highlight: (params: { id: string | null }) => Promise<{ highlighted: boolean }>;
 };
-
-export type AccessibilityEventMap = Record<string, unknown>;

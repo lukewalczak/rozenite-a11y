@@ -22,7 +22,9 @@ import type {
   AccessibilityElement,
   AccessibilityRuleId,
   AccessibilitySystemState,
+  Platform,
 } from '../shared/types';
+import { formatNumber } from '../shared/format';
 import { countIssues, filterElements, type ElementFilter } from './filter-elements';
 import { useAccessibilityAudit } from './use-accessibility-audit';
 import './globals.css';
@@ -48,8 +50,6 @@ const getTone = (element: AccessibilityElement) => {
   if (element.issues.length > 0) return 'warning';
   return 'success';
 };
-
-const formatNumber = (value: number) => String(Math.round(value * 10) / 10);
 
 function ElementRow({
   element,
@@ -86,9 +86,11 @@ function ElementRow({
 
 function ElementDetails({
   element,
+  platform,
   minTouchTarget,
 }: {
   element: AccessibilityElement;
+  platform: Platform;
   minTouchTarget: number;
 }) {
   const { frame } = element;
@@ -136,7 +138,9 @@ function ElementDetails({
         <DescriptionList.Item label="Actions">
           {element.actions.length > 0 ? element.actions.join(', ') : '—'}
         </DescriptionList.Item>
-        <DescriptionList.Item label="Live region">{element.liveRegion ?? '—'}</DescriptionList.Item>
+        <DescriptionList.Item label="Live region">
+          {element.liveRegion ?? (platform === 'ios' ? '— (Android only)' : '—')}
+        </DescriptionList.Item>
         <DescriptionList.Item label="State">
           {element.states.length > 0 ? element.states.join(', ') : '—'}
         </DescriptionList.Item>
@@ -313,7 +317,7 @@ function AccessibilityPanelContent() {
                       }
                       description={
                         filter === 'issues' && !search
-                          ? 'Nothing on this screen broke a rule. Rules cover labels, roles, touch targets and nesting, not contrast or focus order.'
+                          ? 'Nothing on this screen broke a rule. Rules cover labels, roles, state and values, font scaling, actions, disabled state, touch targets and nesting, not contrast or focus order.'
                           : 'Try a different search or filter.'
                       }
                     />
@@ -339,6 +343,7 @@ function AccessibilityPanelContent() {
                   {selectedElement ? (
                     <ElementDetails
                       element={selectedElement}
+                      platform={audit.platform}
                       minTouchTarget={audit.minTouchTarget}
                     />
                   ) : (

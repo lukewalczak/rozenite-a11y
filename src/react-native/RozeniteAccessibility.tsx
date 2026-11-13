@@ -1,11 +1,7 @@
 import { createRozeniteRpc, useRozeniteDevToolsClient } from '@rozenite/plugin-bridge';
 import { useEffect, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import { AccessibilityInfo, PixelRatio, Platform, StyleSheet, View } from 'react-native';
-import {
-  ACCESSIBILITY_PLUGIN_ID,
-  type AccessibilityEventMap,
-  type AccessibilityMethods,
-} from '../shared/messaging';
+import { ACCESSIBILITY_PLUGIN_ID, type AccessibilityMethods } from '../shared/messaging';
 import type { AccessibilityAudit, AccessibilitySystemState, Frame } from '../shared/types';
 import { auditHostTree } from './audit';
 import { collectHostNodes } from './host-tree';
@@ -15,7 +11,7 @@ const HIGHLIGHT_COLOR = '#ff4f7b';
 
 // Some of these settings exist on one platform only, and a query for a
 // missing one must not fail the whole audit.
-const query = (read: (() => Promise<boolean>) | undefined): Promise<boolean> => {
+const readSetting = (read: (() => Promise<boolean>) | undefined): Promise<boolean> => {
   try {
     return read ? read().catch(() => false) : Promise.resolve(false);
   } catch {
@@ -32,12 +28,12 @@ const getSystemState = async (): Promise<AccessibilitySystemState> => {
     invertColorsEnabled,
     reduceTransparencyEnabled,
   ] = await Promise.all([
-    query(AccessibilityInfo.isScreenReaderEnabled),
-    query(AccessibilityInfo.isReduceMotionEnabled),
-    query(AccessibilityInfo.isBoldTextEnabled),
-    query(AccessibilityInfo.isGrayscaleEnabled),
-    query(AccessibilityInfo.isInvertColorsEnabled),
-    query(AccessibilityInfo.isReduceTransparencyEnabled),
+    readSetting(AccessibilityInfo.isScreenReaderEnabled),
+    readSetting(AccessibilityInfo.isReduceMotionEnabled),
+    readSetting(AccessibilityInfo.isBoldTextEnabled),
+    readSetting(AccessibilityInfo.isGrayscaleEnabled),
+    readSetting(AccessibilityInfo.isInvertColorsEnabled),
+    readSetting(AccessibilityInfo.isReduceTransparencyEnabled),
   ]);
 
   return {
@@ -57,7 +53,7 @@ const getSystemState = async (): Promise<AccessibilitySystemState> => {
  * outline ends up on top.
  */
 export const RozeniteAccessibility = (): ReactNode => {
-  const client = useRozeniteDevToolsClient<AccessibilityEventMap>({
+  const client = useRozeniteDevToolsClient({
     pluginId: ACCESSIBILITY_PLUGIN_ID,
   });
   const [highlight, setHighlight] = useState<Frame | null>(null);
@@ -71,6 +67,12 @@ export const RozeniteAccessibility = (): ReactNode => {
     }
 
     const rpc = createRozeniteRpc<AccessibilityMethods>(client);
+    // An unmounted container never answers `measureInWindow`; the cleanup settles
+    // any measurement still waiting so its request does not hang.
+    let cancelMeasurements = () => {};
+    const cancelled = new Promise<null>((resolve) => {
+      cancelMeasurements = () => resolve(null);
+    });
 
     const subscriptions = [
       rpc.handle('runAudit', async (): Promise<AccessibilityAudit> => {
@@ -83,7 +85,7 @@ export const RozeniteAccessibility = (): ReactNode => {
 
         const { elements, minTouchTarget, measureById } = auditHostTree(
           collectHostNodes(roots, measureHostInstance),
-          { platform: Platform.OS },
+          Platform.OS,
         );
         measureByIdRef.current = measureById;
 
@@ -107,13 +109,16 @@ export const RozeniteAccessibility = (): ReactNode => {
         // this component's container, which may not start at the window origin.
         const container = containerRef.current;
         const origin = container
-          ? await new Promise<{ x: number; y: number }>((resolve) =>
-              container.measureInWindow((x, y) => resolve({ x: x || 0, y: y || 0 })),
-            )
+          ? await Promise.race([
+              new Promise<{ x: number; y: number }>((resolve) =>
+                container.measureInWindow((x, y) => resolve({ x: x || 0, y: y || 0 })),
+              ),
+              cancelled,
+            ])
           : { x: 0, y: 0 };
 
         // A newer request or the cleanup below has taken over in the meantime.
-        if (request !== highlightRequestRef.current) {
+        if (!origin || request !== highlightRequestRef.current) {
           return { highlighted: false };
         }
         setHighlight({ ...frame, x: frame.x - origin.x, y: frame.y - origin.y });
@@ -123,6 +128,7 @@ export const RozeniteAccessibility = (): ReactNode => {
 
     return () => {
       highlightRequestRef.current++;
+      cancelMeasurements();
       subscriptions.forEach((subscription) => subscription.remove());
       rpc.close();
       setHighlight(null);

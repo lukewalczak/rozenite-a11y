@@ -5,9 +5,6 @@ import { rozenitePlugin } from '@rozenite/vite-plugin';
 export default defineConfig({
   root: __dirname,
   plugins: [rozenitePlugin()],
-  test: {
-    passWithNoTests: true,
-  },
   base: './',
   build: {
     outDir: './dist',

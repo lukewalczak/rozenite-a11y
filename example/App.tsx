@@ -79,6 +79,14 @@ export default function App() {
             <Text>Notifications</Text>
             <Switch value={enabled} onValueChange={setEnabled} />
           </Pressable>
+          <View style={styles.row}>
+            <Text>Notifications</Text>
+            <Switch
+              accessibilityLabel="Notifications"
+              value={enabled}
+              onValueChange={setEnabled}
+            />
+          </View>
         </Section>
 
         <Section title="Roles, state and values">
@@ -116,7 +124,9 @@ export default function App() {
               ARIA role passed as accessibilityRole
             </Text>
           )}
+          <Text role={'headline' as never}>Unknown value of role</Text>
           <Text allowFontScaling={false}>Text that ignores the system font size</Text>
+          <Text maxFontSizeMultiplier={1.5}>Text that scales up to 1.5×</Text>
         </Section>
 
         <Section title="Actions and disabled state">
@@ -137,6 +147,14 @@ export default function App() {
           >
             <Text style={styles.buttonText}>Actions without a handler</Text>
           </Pressable>
+          <Pressable
+            role="button"
+            onAccessibilityAction={noop}
+            style={styles.button}
+            onPress={noop}
+          >
+            <Text style={styles.buttonText}>Handler without actions</Text>
+          </Pressable>
           <Pressable role="button" disabled style={[styles.button, styles.disabled]} onPress={noop}>
             <Text style={styles.buttonText}>Disabled button</Text>
           </Pressable>
@@ -148,13 +166,29 @@ export default function App() {
           >
             <Text style={styles.buttonText}>Looks disabled, is not marked</Text>
           </Pressable>
+          <View pointerEvents="none">
+            <Pressable role="button" style={[styles.button, styles.disabled]} onPress={noop}>
+              <Text style={styles.buttonText}>Blocked by its parent, is not marked</Text>
+            </Pressable>
+          </View>
+          <Pressable role="button" pointerEvents="box-none" style={styles.button} onPress={noop}>
+            <Text style={styles.buttonText}>box-none, still pressable</Text>
+          </Pressable>
+          <Pressable role="button" style={styles.button} onPress={noop}>
+            <Text style={styles.buttonText}>Control reachable by screen readers</Text>
+          </Pressable>
+          <Pressable accessible={false} style={styles.button} onPress={noop}>
+            <Text style={styles.buttonText}>Control that is hidden from screen readers</Text>
+          </Pressable>
         </Section>
 
         <Section title="Live regions and hiding">
           <Pressable role="button" style={styles.button} onPress={() => setSaved(saved + 1)}>
             <Text style={styles.buttonText}>Save</Text>
           </Pressable>
+          {/* Announced by TalkBack only; VoiceOver ignores aria-live. */}
           <Text aria-live="polite">{saved > 0 ? `Saved ${saved} times` : 'Not saved yet'}</Text>
+          <Text>{saved > 0 ? `Saved ${saved} times` : 'Not saved yet'} (no live region)</Text>
           <View aria-hidden>
             <Text>Hidden on both platforms</Text>
           </View>

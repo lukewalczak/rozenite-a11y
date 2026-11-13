@@ -1,3 +1,7 @@
+import type { PlatformOSType } from 'react-native';
+
+export type Platform = PlatformOSType;
+
 export type Frame = {
   x: number;
   y: number;
@@ -75,7 +79,7 @@ export type AccessibilitySystemState = {
 };
 
 export type AccessibilityAudit = {
-  platform: string;
+  platform: Platform;
   /** Minimum touch target edge for the platform, in points / dp. */
   minTouchTarget: number;
   /** In the order the tree is traversed, which approximates reading order. */

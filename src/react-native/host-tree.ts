@@ -96,6 +96,16 @@ const getOwnerPath = (fiber: FiberLike): string[] => {
 
 const noFrame = () => null;
 
+const textNode = (text: string, componentPath: string[]): HostNode => ({
+  type: TEXT_NODE_TYPE,
+  props: {},
+  text,
+  children: [],
+  componentPath,
+  ownerPath: [],
+  measure: noFrame,
+});
+
 const walk = (
   first: FiberLike | null | undefined,
   path: string[],
@@ -109,15 +119,7 @@ const walk = (
     }
 
     if (fiber.tag === HOST_TEXT) {
-      out.push({
-        type: TEXT_NODE_TYPE,
-        props: {},
-        text: String(fiber.memoizedProps ?? ''),
-        children: [],
-        componentPath: path,
-        ownerPath: [],
-        measure: noFrame,
-      });
+      out.push(textNode(String(fiber.memoizedProps ?? ''), path));
       continue;
     }
 
@@ -142,15 +144,7 @@ const walk = (
         !fiber.child &&
         (typeof props.children === 'string' || typeof props.children === 'number')
       ) {
-        node.children.push({
-          type: TEXT_NODE_TYPE,
-          props: {},
-          text: String(props.children),
-          children: [],
-          componentPath: path,
-          ownerPath: [],
-          measure: noFrame,
-        });
+        node.children.push(textNode(String(props.children), path));
       }
 
       walk(fiber.child, path, node.children, measure);

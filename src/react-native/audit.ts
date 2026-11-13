@@ -3,12 +3,10 @@ import type {
   AccessibilityElementKind,
   AccessibilityIssue,
   Frame,
+  Platform,
 } from '../shared/types';
+import { formatNumber } from '../shared/format';
 import { TEXT_NODE_TYPE, type HostNode } from './host-tree';
-
-export type AuditOptions = {
-  platform: string;
-};
 
 export type AuditResult = {
   elements: AccessibilityElement[];
@@ -18,7 +16,7 @@ export type AuditResult = {
 };
 
 // Apple's Human Interface Guidelines ask for 44pt, Material Design for 48dp.
-export const getMinTouchTarget = (platform: string) => (platform === 'android' ? 48 : 44);
+const getMinTouchTarget = (platform: Platform) => (platform === 'android' ? 48 : 44);
 
 const INTERACTIVE_ROLES = new Set([
   'adjustable',
@@ -165,22 +163,19 @@ const getVisibleChildren = (node: HostNode): HostNode[] => {
   return node.children.filter((child) => !isScreen(child) || child === top);
 };
 
+const isNotDisplayed = (node: HostNode): boolean =>
+  (isScreen(node) && node.props.activityState === 0) ||
+  flattenStyle(node.props.style).display === 'none';
+
 // `aria-hidden` works on both platforms; the older props each work on one only.
-const isHidden = (node: HostNode, platform: string): boolean => {
-  const { props } = node;
-  if (
-    props['aria-hidden'] === true ||
-    (platform === 'ios'
-      ? props.accessibilityElementsHidden === true
-      : props.importantForAccessibility === 'no-hide-descendants')
-  ) {
-    return true;
-  }
-  if (isScreen(node) && props.activityState === 0) {
-    return true;
-  }
-  return flattenStyle(props.style).display === 'none';
-};
+const isHiddenFromScreenReader = (node: HostNode, platform: Platform): boolean =>
+  node.props['aria-hidden'] === true ||
+  (platform === 'ios'
+    ? node.props.accessibilityElementsHidden === true
+    : node.props.importantForAccessibility === 'no-hide-descendants');
+
+const isHidden = (node: HostNode, platform: Platform): boolean =>
+  isHiddenFromScreenReader(node, platform) || isNotDisplayed(node);
 
 const getLabel = (node: HostNode): string =>
   asString(node.props.accessibilityLabel) ||
@@ -205,14 +200,16 @@ const isInteractive = (node: HostNode, kind: AccessibilityElementKind, role: str
   node.props.isPressable === true ||
   (role != null && INTERACTIVE_ROLES.has(role));
 
-const getStates = (node: HostNode): string[] => {
-  const state = asObject(node.props.accessibilityState);
-  const read = (key: string) => state[key] ?? node.props[`aria-${key}`];
+const readState = (node: HostNode, key: string): unknown =>
+  asObject(node.props.accessibilityState)[key] ?? node.props[`aria-${key}`];
+
+const getStates = (node: HostNode, kind: AccessibilityElementKind): string[] => {
+  const read = (key: string) => readState(node, key);
 
   const states: string[] = [];
   // A native switch reports its position itself: `value` on iOS, `on` on Android.
   const switchValue = node.props.on ?? node.props.value;
-  if (getKind(node.type) === 'switch' && typeof switchValue === 'boolean') {
+  if (kind === 'switch' && typeof switchValue === 'boolean') {
     states.push(switchValue ? 'on' : 'off');
   }
   if (read('disabled') === true || node.props.disabled === true) states.push('disabled');
@@ -273,11 +270,10 @@ const getRoleIssues = (node: HostNode, kind: AccessibilityElementKind): Accessib
   }
 
   const role = ariaRole || nativeRole;
-  const state = asObject(node.props.accessibilityState);
 
   if (kind === 'view' && CHECKABLE_ROLES.has(role)) {
-    const checked = state.checked ?? node.props['aria-checked'];
-    const selected = state.selected ?? node.props['aria-selected'];
+    const checked = readState(node, 'checked');
+    const selected = readState(node, 'selected');
     if (checked === undefined && !(role === 'radio' && selected !== undefined)) {
       issues.push({
         rule: 'missing-state',
@@ -306,7 +302,7 @@ const getActions = (node: HostNode): string[] =>
     : [];
 
 // Live regions are an Android feature; VoiceOver does not announce them.
-const getLiveRegion = (node: HostNode, platform: string): string | null => {
+const getLiveRegion = (node: HostNode, platform: Platform): string | null => {
   if (platform === 'ios') {
     return null;
   }
@@ -320,6 +316,7 @@ const getPointerEvents = (node: HostNode) =>
 /** Checks of custom actions and of a control that cannot be used but is not announced as such. */
 const getBehaviorIssues = (
   node: HostNode,
+  kind: AccessibilityElementKind,
   role: string | null,
   interactive: boolean,
   touchesBlocked: boolean,
@@ -343,7 +340,9 @@ const getBehaviorIssues = (
     });
   }
 
+  // Native sliders handle increment and decrement themselves; a plain view does not.
   if (
+    node.type === 'RCTView' &&
     (role === 'adjustable' || role === 'slider') &&
     !(actions.includes('increment') && actions.includes('decrement'))
   ) {
@@ -355,7 +354,7 @@ const getBehaviorIssues = (
     });
   }
 
-  if (interactive && touchesBlocked && !getStates(node).includes('disabled')) {
+  if (interactive && touchesBlocked && !getStates(node, kind).includes('disabled')) {
     issues.push({
       rule: 'missing-disabled-state',
       severity: 'warning',
@@ -368,7 +367,7 @@ const getBehaviorIssues = (
 };
 
 /** The text a screen reader assembles for an element that has no label of its own. */
-const collectText = (node: HostNode, platform: string): string => {
+const collectText = (node: HostNode, platform: Platform): string => {
   const parts: string[] = [];
   const visit = (current: HostNode) => {
     if (current.type === TEXT_NODE_TYPE) {
@@ -410,7 +409,7 @@ const ANDROID_SPOKEN_ROLES: Record<string, string> = {
 
 const describe = (
   element: Pick<AccessibilityElement, 'label' | 'role' | 'kind' | 'states' | 'value'>,
-  platform: string,
+  platform: Platform,
 ) => {
   const isAndroid = platform === 'android';
   let role = element.role
@@ -426,9 +425,7 @@ const describe = (
   return parts.filter(Boolean).join(', ');
 };
 
-const formatSize = (value: number) => String(Math.round(value * 10) / 10);
-
-export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): AuditResult => {
+export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResult => {
   const minTouchTarget = getMinTouchTarget(platform);
   const elements: AccessibilityElement[] = [];
   const measureById = new Map<string, () => Frame | null>();
@@ -442,7 +439,7 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
   ) => {
     const id = String(elements.length);
     const role = getRole(node);
-    const states = getStates(node);
+    const states = getStates(node, kind);
     const value = getValue(node);
     // The component that rendered the element is the one to edit. Without
     // owner information, fall back to the nearest one above it in the tree.
@@ -475,14 +472,9 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
     });
   };
 
-  const checkTouchTarget = (
-    node: HostNode,
-    kind: AccessibilityElementKind,
-    frame: Frame | null,
-    issues: AccessibilityIssue[],
-  ) => {
+  const checkTouchTarget = (node: HostNode, frame: Frame | null, issues: AccessibilityIssue[]) => {
     // Links inside a paragraph are exempt from target-size rules (WCAG 2.5.8).
-    if (kind === 'text' || !frame || frame.width <= 0 || frame.height <= 0) {
+    if (node.type === 'RCTVirtualText' || !frame || frame.width <= 0 || frame.height <= 0) {
       return;
     }
     const size = getTouchSize(node, frame);
@@ -490,13 +482,35 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
       issues.push({
         rule: 'small-touch-target',
         severity: 'warning',
-        message: `Touch target is ${formatSize(size.width)}×${formatSize(size.height)}, below the ${minTouchTarget}×${minTouchTarget} minimum. Enlarge it or add hitSlop.`,
+        message: `Touch target is ${formatNumber(size.width)}×${formatNumber(size.height)}, below the ${minTouchTarget}×${minTouchTarget} minimum. Enlarge it or add hitSlop.`,
       });
     }
   };
 
+  // Text hidden from screen readers is still on screen, so it still has to scale.
+  const visitHidden = (node: HostNode) => {
+    if (node.type === TEXT_NODE_TYPE || isNotDisplayed(node)) {
+      return;
+    }
+    const kind = getKind(node.type);
+    if (isFontScalingDisabled(node, kind)) {
+      addElement(
+        node,
+        kind,
+        { label: collectText(node, platform), interactive: false, focusable: false },
+        [FONT_SCALING_ISSUE],
+        node.measure(),
+      );
+    }
+    node.children.forEach(visitHidden);
+  };
+
   const visit = (node: HostNode, insideAccessible: boolean, ancestorBlocksTouches: boolean) => {
-    if (node.type === TEXT_NODE_TYPE || isHidden(node, platform)) {
+    if (node.type === TEXT_NODE_TYPE || isNotDisplayed(node)) {
+      return;
+    }
+    if (isHiddenFromScreenReader(node, platform)) {
+      visitHidden(node);
       return;
     }
 
@@ -507,10 +521,10 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
     const ownLabel = getLabel(node);
     const optedOut = props.accessible === false || props.importantForAccessibility === 'no';
     const fontScalingDisabled = isFontScalingDisabled(node, kind);
-    // `box-none` stops touches on the view itself, `box-only` on its descendants.
+    // `box-only` stops touches on the descendants. `box-none` does not block the
+    // control itself: a touch on its children still reaches its press handlers.
     const pointerEvents = getPointerEvents(node);
-    const touchesBlocked =
-      ancestorBlocksTouches || pointerEvents === 'none' || pointerEvents === 'box-none';
+    const touchesBlocked = ancestorBlocksTouches || pointerEvents === 'none';
     const childrenBlockTouches =
       ancestorBlocksTouches || pointerEvents === 'none' || pointerEvents === 'box-only';
     const visitChildren = (inside: boolean) =>
@@ -520,6 +534,20 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
       // The parent is one accessibility element; its descendants are folded into it.
       // Links inside a paragraph stay reachable through the paragraph itself.
       if (interactive && !optedOut && node.type !== 'RCTVirtualText') {
+        const issues: AccessibilityIssue[] = [
+          {
+            rule: 'nested-interactive',
+            severity: platform === 'ios' ? 'error' : 'warning',
+            message:
+              platform === 'ios'
+                ? 'Control is nested inside another accessible element, so VoiceOver cannot focus it on its own. Set accessible={false} on the parent or move the control out of it.'
+                : 'Control is nested inside another accessible element. TalkBack focuses it separately, without the text around it, and VoiceOver cannot focus it at all. Give it its own label, or move it out of the parent.',
+          },
+          ...getBehaviorIssues(node, kind, role, interactive, touchesBlocked),
+          ...(fontScalingDisabled ? [FONT_SCALING_ISSUE] : []),
+        ];
+        const frame = node.measure();
+        checkTouchTarget(node, frame, issues);
         addElement(
           node,
           kind,
@@ -529,18 +557,8 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
             interactive,
             focusable: platform !== 'ios',
           },
-          [
-            {
-              rule: 'nested-interactive',
-              severity: platform === 'ios' ? 'error' : 'warning',
-              message:
-                platform === 'ios'
-                  ? 'Control is nested inside another accessible element, so VoiceOver cannot focus it on its own. Set accessible={false} on the parent or move the control out of it.'
-                  : 'Control is nested inside another accessible element. TalkBack focuses it separately, without the text around it, and VoiceOver cannot focus it at all. Give it its own label, or move it out of the parent.',
-            },
-            ...(fontScalingDisabled ? [FONT_SCALING_ISSUE] : []),
-          ],
-          node.measure(),
+          issues,
+          frame,
         );
       } else if (fontScalingDisabled) {
         addElement(
@@ -608,7 +626,7 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
 
       issues.push(
         ...getRoleIssues(node, kind),
-        ...getBehaviorIssues(node, role, interactive, touchesBlocked),
+        ...getBehaviorIssues(node, kind, role, interactive, touchesBlocked),
       );
       if (fontScalingDisabled) {
         issues.push(FONT_SCALING_ISSUE);
@@ -616,7 +634,7 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
 
       const frame = node.measure();
       if (interactive) {
-        checkTouchTarget(node, kind, frame, issues);
+        checkTouchTarget(node, frame, issues);
       }
 
       addElement(node, kind, { label, interactive, focusable: true }, issues, frame);
@@ -634,7 +652,7 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
             'Control is hidden from screen readers (accessible={false}). Make sure the same action is reachable another way.',
         },
       ];
-      checkTouchTarget(node, kind, frame, issues);
+      checkTouchTarget(node, frame, issues);
       addElement(
         node,
         kind,

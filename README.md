@@ -13,9 +13,10 @@ It reads the mounted component tree and lists what a screen reader would stop on
 - **Font scaling**: text that ignores the font size set in system settings
 - **Accessibility actions**: declared actions nothing handles, handlers with no actions, adjustable elements without increment and decrement
 - **Disabled state**: controls that ignore touches but are announced as usable
-- **Live regions**: which elements announce their changes on their own
+- **Live regions**: which elements announce their changes on their own (Android only; VoiceOver ignores `aria-live`)
 - **Touch targets**: controls smaller than 44×44 pt on iOS or 48×48 dp on Android, counting `hitSlop`
 - **Nested controls**: controls inside another accessible element, which VoiceOver cannot reach
+- **Hidden controls**: controls hidden from screen readers with `accessible={false}`
 - **Outline in the app**: select an element in the panel to see where it is on the device
 - **Component names**: each element names the component that rendered it
 - **System settings**: screen reader, font scale, reduce motion and other accessibility settings of the device
