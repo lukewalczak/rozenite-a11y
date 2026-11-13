@@ -1,9 +1,8 @@
 import type { AccessibilityElement, AccessibilityIssue, Frame, Platform } from '../shared/types';
 import { getAnnouncement } from './announcement';
+import { getComponent } from './component';
 import { TEXT_NODE_TYPE, type HostNode } from './host-tree';
 import {
-  asString,
-  getComponent,
   getLabel,
   getLiveRegion,
   getPointerEvents,
@@ -15,36 +14,40 @@ import {
 import {
   FONT_SCALING_ISSUE,
   IMAGE_MISSING_LABEL_ISSUE,
+  IMAGE_NOT_ACCESSIBLE_ISSUE,
   getBehaviorIssues,
+  getInvalidRoleIssues,
   getMinTouchTarget,
   getNestedIssue,
   getNotAccessibleIssue,
   getRoleIssues,
-  getStopLabel,
+  getStopNaming,
   getTouchTargetIssue,
 } from './rules';
+import { normalizeText } from './values';
 import {
   collectText,
   findTopModalHost,
+  getAccessibleName,
   getModalChild,
   getShownChildren,
   isHiddenFromScreenReader,
+  isMarkedUnimportant,
   isNotDisplayed,
   isScreenReaderStop,
 } from './visibility';
 
-export type AuditResult = {
+type AuditResult = {
   elements: AccessibilityElement[];
   minTouchTarget: number;
   measureById: Map<string, () => Frame | null>;
 };
 
 export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResult => {
-  const minTouchTarget = getMinTouchTarget(platform);
   const elements: AccessibilityElement[] = [];
   const measureById = new Map<string, () => Frame | null>();
 
-  /** Lists an element; a control is also checked for its touch target size. */
+  /** A control is also checked for its touch target size. */
   const addElement = (
     { node, kind, role, interactive, states, actions }: InspectedNode,
     label: string,
@@ -53,7 +56,7 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
   ) => {
     const id = String(elements.length);
     const frame = node.measure();
-    const touchTargetIssue = interactive ? getTouchTargetIssue(node, frame, minTouchTarget) : null;
+    const touchTargetIssue = interactive ? getTouchTargetIssue(node, kind, frame, platform) : null;
     const value = getValue(node);
 
     measureById.set(id, node.measure);
@@ -63,16 +66,13 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
       hostType: node.type,
       component: getComponent(node),
       componentPath: node.componentPath,
-      role: role.role,
-      hint: asString(node.props.accessibilityHint) || null,
+      role: role.declaredRole,
+      hint: normalizeText(node.props.accessibilityHint) || null,
       value,
       states,
       actions,
       liveRegion: getLiveRegion(node, platform),
-      announcement: getAnnouncement(
-        { label, role: role.valid ? role.role : null, kind, states, value },
-        platform,
-      ),
+      announcement: getAnnouncement({ label, role: role.role, kind, states, value }, platform),
       frame,
       issues: touchTargetIssue ? [...issues, touchTargetIssue] : issues,
       label,
@@ -81,20 +81,25 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
     });
   };
 
-  /** Lists an element a screen reader does not stop on, named after its text. */
   const addUnfocusable = (inspected: InspectedNode, issues: AccessibilityIssue[]) =>
     addElement(inspected, collectText(inspected.node, platform), false, issues);
 
   const modalHost = findTopModalHost(roots);
 
-  // Text hidden from screen readers is still on screen, so it still has to scale.
+  // What a screen reader cannot reach is still on screen, so its text still has to
+  // scale, and still mounts, so an invalid accessibilityRole still throws on Android.
+  // Hidden controls are not listed: navigation libraries hide off-screen pages this way.
   const visitScreenReaderHidden = (node: HostNode) => {
     if (node.type === TEXT_NODE_TYPE || node === modalHost || isNotDisplayed(node)) {
       return;
     }
     const inspected = inspectNode(node);
-    if (isFontScalingDisabled(node, inspected.kind)) {
-      addUnfocusable({ ...inspected, interactive: false }, [FONT_SCALING_ISSUE]);
+    const fontScalingIssues = isFontScalingDisabled(node, inspected.kind)
+      ? [FONT_SCALING_ISSUE]
+      : [];
+    const issues = [...getInvalidRoleIssues(inspected.role), ...fontScalingIssues];
+    if (issues.length > 0) {
+      addUnfocusable({ ...inspected, interactive: false }, issues);
     }
     getShownChildren(node).forEach(visitScreenReaderHidden);
   };
@@ -111,8 +116,8 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
     const { props } = node;
     const inspected = inspectNode(node);
     const { kind, interactive } = inspected;
-    const ownLabel = getLabel(node);
-    const optedOut = props.accessible === false || props.importantForAccessibility === 'no';
+    const optedOut = props.accessible === false || isMarkedUnimportant(node, platform);
+    const isLiveRegion = getLiveRegion(node, platform) != null;
     const fontScalingIssues = isFontScalingDisabled(node, kind) ? [FONT_SCALING_ISSUE] : [];
     // `box-only` stops touches on the descendants. `box-none` does not block the
     // control itself: a touch on its children still reaches its press handlers.
@@ -127,49 +132,71 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
           : visit(child, inside, childrenBlockTouches),
       );
 
+    const getControlIssues = () => [
+      ...getRoleIssues(inspected),
+      ...getBehaviorIssues(inspected, touchesBlocked),
+      ...fontScalingIssues,
+    ];
+    const addNotAccessible = () =>
+      addElement(inspected, getAccessibleName(node, platform), false, [
+        getNotAccessibleIssue(node, platform),
+        ...getInvalidRoleIssues(inspected.role),
+        ...fontScalingIssues,
+      ]);
+    // An element a screen reader does not stop on is listed for what it gets wrong,
+    // or because TalkBack announces changes inside a live region it never stops on.
+    const addIfNoteworthy = () => {
+      const issues = [...getInvalidRoleIssues(inspected.role), ...fontScalingIssues];
+      if (issues.length > 0 || isLiveRegion) {
+        addUnfocusable(inspected, issues);
+      }
+    };
+
     if (insideAccessible) {
       // The parent is one accessibility element; its descendants are folded into it.
       // Links inside a paragraph stay reachable through the paragraph itself.
-      if (interactive && !optedOut && node.type !== 'RCTVirtualText') {
-        // VoiceOver folds it into the parent; TalkBack focuses it as a separate stop.
-        addElement(inspected, ownLabel || collectText(node, platform), platform !== 'ios', [
+      if (!interactive || node.type === 'RCTVirtualText') {
+        addIfNoteworthy();
+      } else if (platform === 'ios' ? optedOut : !isScreenReaderStop(node, kind, platform)) {
+        addNotAccessible();
+      } else if (platform === 'ios') {
+        // VoiceOver folds the control into the parent.
+        addElement(inspected, getAccessibleName(node, platform), false, [
           getNestedIssue(platform),
-          ...getRoleIssues(inspected),
-          ...getBehaviorIssues(inspected, touchesBlocked),
-          ...fontScalingIssues,
+          ...getControlIssues(),
         ]);
-      } else if (fontScalingIssues.length > 0) {
-        addUnfocusable(inspected, fontScalingIssues);
+      } else {
+        // TalkBack focuses it as a separate stop, which needs a name and a role of its own.
+        const stop = getStopNaming(inspected, platform);
+        addElement(inspected, stop?.label ?? '', true, [
+          getNestedIssue(platform),
+          ...(stop?.issues ?? []),
+          ...getControlIssues(),
+        ]);
       }
       visitChildren(true);
       return;
     }
 
-    if (isScreenReaderStop(node, kind, platform)) {
-      const stop = getStopLabel(inspected, ownLabel, platform);
-      if (!stop) {
-        return;
-      }
-      addElement(inspected, stop.label, true, [
-        ...stop.issues,
-        ...getRoleIssues(inspected),
-        ...getBehaviorIssues(inspected, touchesBlocked),
-        ...fontScalingIssues,
-      ]);
+    // An empty Text is no stop, but what is inside it still counts.
+    const stop = isScreenReaderStop(node, kind, platform)
+      ? getStopNaming(inspected, platform)
+      : null;
+    if (stop) {
+      addElement(inspected, stop.label, true, [...stop.issues, ...getControlIssues()]);
       visitChildren(true);
       return;
     }
 
+    const ownLabel = getLabel(node);
     if (interactive) {
-      addElement(inspected, ownLabel || collectText(node, platform), false, [
-        getNotAccessibleIssue(node),
-        ...fontScalingIssues,
-      ]);
+      addNotAccessible();
     } else if (kind === 'image' && props.accessible === undefined && !ownLabel) {
       addElement(inspected, '', false, [IMAGE_MISSING_LABEL_ISSUE]);
-    } else if (fontScalingIssues.length > 0 || getLiveRegion(node, platform)) {
-      // TalkBack announces changes inside a live region it never stops on.
-      addUnfocusable(inspected, fontScalingIssues);
+    } else if (kind === 'image' && props.accessible === undefined && platform === 'ios') {
+      addElement(inspected, ownLabel, false, [IMAGE_NOT_ACCESSIBLE_ISSUE]);
+    } else {
+      addIfNoteworthy();
     }
 
     visitChildren(false);
@@ -186,5 +213,5 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
     roots.forEach((root) => visit(root, false, false));
   }
 
-  return { elements, minTouchTarget, measureById };
+  return { elements, minTouchTarget: getMinTouchTarget(platform), measureById };
 };

@@ -39,6 +39,12 @@ const pressable = (
   frame: Frame | null = LARGE,
 ) => node('RCTView', { accessible: true, onClick: () => undefined, ...props }, children, frame);
 
+// The props View hands to its host view for `aria-hidden`.
+const HIDDEN = {
+  accessibilityElementsHidden: true,
+  importantForAccessibility: 'no-hide-descendants',
+};
+
 const audit = (roots: HostNode[], platform: Platform = 'ios') =>
   auditHostTree(roots, platform).elements;
 
@@ -101,6 +107,16 @@ describe('auditHostTree', () => {
       expect(rules([button()], 'android')).toEqual(['small-touch-target']);
     });
 
+    it('leaves the size of a native iOS switch alone', () => {
+      const frame = { x: 0, y: 0, width: 51, height: 31 };
+      const props = { accessibilityLabel: 'Wi-Fi', value: true, on: true };
+
+      expect(rules([node('RCTSwitch', props, [], frame)], 'ios')).toEqual([]);
+      expect(rules([node('AndroidSwitch', props, [], frame)], 'android')).toEqual([
+        'small-touch-target',
+      ]);
+    });
+
     it('counts hitSlop towards the target', () => {
       expect(rules([button({ hitSlop: 4 })], 'android')).toEqual([]);
       expect(rules([button({ hitSlop: { top: 4, bottom: 4 } })], 'android')).toEqual([
@@ -110,6 +126,27 @@ describe('auditHostTree', () => {
 
     it('skips elements that could not be measured', () => {
       expect(rules([pressable({ role: 'button' }, [label('OK')], null)], 'android')).toEqual([]);
+    });
+
+    it('ignores pixel rounding in touch target sizes', () => {
+      const button = (height: number) =>
+        pressable({ role: 'button' }, [label('Pay')], { x: 0, y: 0, width: 200, height });
+
+      expect(rules([button(47.99993896484375)], 'android')).toEqual([]);
+      expect(rules([button(47.9)], 'android')).toEqual(['small-touch-target']);
+    });
+
+    it('checks the touch target of a standalone text control', () => {
+      expect(
+        rules([
+          node(
+            'RCTText',
+            { accessible: true, role: 'link', onPress: () => undefined },
+            [text('Forgot password')],
+            { x: 0, y: 0, width: 120, height: 17 },
+          ),
+        ]),
+      ).toEqual(['small-touch-target']);
     });
   });
 
@@ -129,6 +166,18 @@ describe('auditHostTree', () => {
       expect(input.issues).toEqual([
         expect.objectContaining({ rule: 'input-missing-label', severity: 'error' }),
       ]);
+    });
+
+    it('counts a labelling view only on Android, and only when one is named', () => {
+      const input = node('RCTSinglelineTextInputView', { 'aria-labelledby': 'emailLabel' });
+
+      expect(rules([input], 'ios')).toEqual(['input-missing-label']);
+      expect(
+        rules([node('AndroidTextInput', { 'aria-labelledby': 'emailLabel' })], 'android'),
+      ).toEqual([]);
+      expect(rules([node('AndroidTextInput', { accessibilityLabelledBy: [] })], 'android')).toEqual(
+        ['input-missing-label'],
+      );
     });
 
     it('accepts a label', () => {
@@ -162,6 +211,50 @@ describe('auditHostTree', () => {
       expect(nested.issues[0].severity).toBe('warning');
     });
 
+    it('expects a nested control to have a name and a role on Android', () => {
+      const tree = [pressable({ role: 'button' }, [label('Order 42'), pressable()])];
+      const nestedRules = (platform: Platform) =>
+        audit(tree, platform)[1].issues.map((issue) => issue.rule);
+
+      expect(nestedRules('android')).toEqual([
+        'nested-interactive',
+        'missing-label',
+        'missing-role',
+      ]);
+      expect(nestedRules('ios')).toEqual(['nested-interactive']);
+    });
+
+    it('flags a nested control that opted out of accessibility', () => {
+      const tree = [
+        pressable({ role: 'button' }, [
+          label('Card'),
+          pressable({ role: 'button', accessible: false }, [label('Delete')], SMALL),
+        ]),
+      ];
+
+      expect(audit(tree)[1]).toMatchObject({
+        focusable: false,
+        issues: [
+          expect.objectContaining({ rule: 'not-accessible' }),
+          expect.objectContaining({ rule: 'small-touch-target' }),
+        ],
+      });
+    });
+
+    it('does not count a nested control without accessible as a TalkBack stop', () => {
+      const tree = [
+        pressable({ role: 'button' }, [
+          label('Card'),
+          node('RCTView', { role: 'button', onClick: () => undefined }, [label('Delete')]),
+        ]),
+      ];
+
+      expect(audit(tree, 'android')[1]).toMatchObject({
+        focusable: false,
+        issues: [expect.objectContaining({ rule: 'not-accessible' })],
+      });
+    });
+
     it('does not list plain text folded into its parent', () => {
       expect(audit([pressable({ role: 'button' }, [label('Save')])])).toHaveLength(1);
     });
@@ -174,11 +267,38 @@ describe('auditHostTree', () => {
 
       expect(rules([paragraph])).toEqual([]);
     });
+
+    it('checks touch target and disabled state of a nested control', () => {
+      const [, nested] = audit([
+        pressable({ role: 'button' }, [
+          label('Notifications'),
+          node('RCTView', { pointerEvents: 'none' }, [
+            pressable({ role: 'button', accessibilityLabel: 'Toggle' }, [], SMALL),
+          ]),
+        ]),
+      ]);
+      expect(nested.issues.map((issue) => issue.rule)).toEqual([
+        'nested-interactive',
+        'missing-disabled-state',
+        'small-touch-target',
+      ]);
+    });
   });
 
   describe('images', () => {
     it('warns about an image with no label that is not marked decorative', () => {
       expect(rules([node('RCTImageView')])).toEqual(['image-missing-label']);
+    });
+
+    it('flags an image with a label that VoiceOver skips because it is not accessible', () => {
+      const image = node('RCTImageView', { accessibilityLabel: 'Logo' });
+
+      expect(rules([image], 'ios')).toEqual(['not-accessible']);
+      expect(rules([image], 'android')).toEqual([]);
+    });
+
+    it('reports a focusable image without a label under the image rule', () => {
+      expect(rules([node('RCTImageView', { accessible: true })])).toEqual(['image-missing-label']);
     });
 
     it('accepts a decorative image and one with alt text', () => {
@@ -194,12 +314,22 @@ describe('auditHostTree', () => {
   describe('hidden content', () => {
     const button = () => pressable({}, [node('RCTImageView')]);
 
-    it.each([
-      ['aria-hidden', { 'aria-hidden': true }],
-      ['display: none', { style: [{ flex: 1 }, { display: 'none' }] }],
-    ])('skips a subtree hidden with %s', (_name, props) => {
+    it('skips a subtree hidden with display: none', () => {
+      const props = { style: [{ flex: 1 }, { display: 'none' }] };
+
       expect(audit([node('RCTView', props, [button()])])).toEqual([]);
       expect(audit([node('RCTView', props, [button()])], 'android')).toEqual([]);
+    });
+
+    it('skips a subtree hidden with aria-hidden, as libraries hide off-screen pages', () => {
+      expect(audit([node('RCTView', HIDDEN, [button()])])).toEqual([]);
+      expect(audit([node('RCTView', HIDDEN, [button()])], 'android')).toEqual([]);
+    });
+
+    it('still flags an invalid accessibilityRole in a hidden subtree, which Android throws on', () => {
+      const tree = [node('RCTView', HIDDEN, [node('RCTView', { accessibilityRole: 'heading' })])];
+
+      expect(rules(tree, 'android')).toEqual(['invalid-role']);
     });
 
     it('honours the hiding props only on the platform they work on', () => {
@@ -207,11 +337,19 @@ describe('auditHostTree', () => {
       const androidOnly = node('RCTView', { importantForAccessibility: 'no-hide-descendants' }, [
         button(),
       ]);
+      const focusable = (tree: HostNode, platform: Platform) =>
+        audit([tree], platform).map((element) => element.focusable);
 
-      expect(audit([iosOnly], 'ios')).toEqual([]);
-      expect(audit([iosOnly], 'android')).toHaveLength(1);
-      expect(audit([androidOnly], 'android')).toEqual([]);
-      expect(audit([androidOnly], 'ios')).toHaveLength(1);
+      expect(focusable(iosOnly, 'ios')).toEqual([]);
+      expect(focusable(iosOnly, 'android')).toEqual([true]);
+      expect(focusable(androidOnly, 'android')).toEqual([]);
+      expect(focusable(androidOnly, 'ios')).toEqual([true]);
+    });
+
+    it('reads text that passes aria-hidden on unused', () => {
+      const decor = node('RCTText', { accessible: true, 'aria-hidden': true }, [text('Decor')]);
+
+      expect(audit([decor]).map((element) => element.label)).toEqual(['Decor']);
     });
 
     it('audits only the top screen of a native stack', () => {
@@ -232,8 +370,65 @@ describe('auditHostTree', () => {
   });
 
   describe('roles', () => {
-    it('flags a role React Native does not know', () => {
-      expect(rules([pressable({ role: 'buton' }, [label('Save')])])).toEqual(['invalid-role']);
+    it('flags a role React Native does not know and treats the control as having none', () => {
+      expect(rules([pressable({ role: 'buton' }, [label('Save')])])).toEqual([
+        'missing-role',
+        'invalid-role',
+      ]);
+    });
+
+    it('checks accessibilityRole even next to a valid role, since Android applies both', () => {
+      expect(
+        rules([pressable({ role: 'button', accessibilityRole: 'buton' }, [label('Save')])]),
+      ).toEqual(['invalid-role']);
+    });
+
+    it('falls back to a valid accessibilityRole when role is invalid', () => {
+      const [checkbox] = audit([
+        pressable({ role: 'chekbox', accessibilityRole: 'checkbox' }, [label('Terms')]),
+      ]);
+
+      expect(checkbox.issues.map((issue) => issue.rule)).toEqual(['invalid-role', 'missing-state']);
+      expect(checkbox.announcement).toBe('Terms, checkbox');
+    });
+
+    it('flags an invalid role on an element a screen reader does not stop on', () => {
+      expect(rules([node('RCTView', { accessibilityRole: 'heading' }, [label('Title')])])).toEqual([
+        'invalid-role',
+      ]);
+      expect(
+        rules([
+          pressable({ role: 'button' }, [
+            node('RCTView', { accessibilityRole: 'heading' }, [text('Order')]),
+            label('Save'),
+          ]),
+        ]),
+      ).toEqual(['invalid-role']);
+    });
+
+    it('flags a control whose role does not say it can be activated', () => {
+      expect(rules([pressable({ role: 'none' }, [label('Save')])])).toEqual(['missing-role']);
+      expect(rules([pressable({ accessibilityRole: 'header' }, [label('Save')])])).toEqual([
+        'missing-role',
+      ]);
+    });
+
+    it('expects checkable text to say whether it is checked', () => {
+      expect(
+        rules([
+          node('RCTText', { accessible: true, role: 'checkbox', onPress: () => undefined }, [
+            text('Terms'),
+          ]),
+        ]),
+      ).toEqual(['missing-state']);
+    });
+
+    it('expects a slider role on any host but a native slider to handle its value and actions', () => {
+      expect(
+        rules([
+          node('RCTText', { accessible: true, role: 'slider', accessibilityLabel: 'Volume' }),
+        ]),
+      ).toEqual(['missing-value', 'unhandled-actions']);
     });
 
     it('flags an ARIA role passed as accessibilityRole and points at the role prop', () => {
@@ -289,7 +484,27 @@ describe('auditHostTree', () => {
         issues: [],
       });
 
-      expect(audit([slider({ 'aria-valuenow': 4 })])[0].value).toBe('4');
+      expect(
+        audit([slider({ 'aria-valuenow': 4, 'aria-valuemin': 0, 'aria-valuemax': 10 })])[0].value,
+      ).toBe('40%');
+      // A number alone is not announced: both platforms need its range.
+      expect(rules([slider({ 'aria-valuenow': 4 })])).toEqual(['missing-value']);
+    });
+
+    it('accepts a progress bar without a value, which is how an indeterminate one looks', () => {
+      const withRole = (role: string) =>
+        node('RCTView', { accessible: true, role, accessibilityLabel: 'Loading' });
+
+      expect(rules([withRole('progressbar')])).toEqual([]);
+      expect(rules([withRole('meter')])).toEqual(['missing-value']);
+    });
+
+    it('leaves native sliders to announce their own value', () => {
+      const slider = (type: string) =>
+        node(type, { accessible: true, role: 'slider', accessibilityLabel: 'Volume' });
+
+      expect(rules([slider('RNCSlider')])).toEqual([]);
+      expect(rules([slider('RCTView')])).toContain('missing-value');
     });
   });
 
@@ -338,7 +553,7 @@ describe('auditHostTree', () => {
           accessible: true,
           accessibilityRole: 'adjustable',
           accessibilityLabel: 'Volume',
-          accessibilityValue: { now: 4 },
+          accessibilityValue: { now: 4, min: 0, max: 10 },
           accessibilityActions: names.map((name) => ({ name })),
           onAccessibilityAction: () => undefined,
         });
@@ -354,7 +569,7 @@ describe('auditHostTree', () => {
             accessible: true,
             role: 'slider',
             accessibilityLabel: 'Volume',
-            'aria-valuenow': 4,
+            accessibilityValue: { text: '4' },
           }),
         ]),
       ).toEqual(['unhandled-actions']);
@@ -366,7 +581,7 @@ describe('auditHostTree', () => {
           accessible: true,
           accessibilityRole: 'adjustable',
           accessibilityLabel: 'Volume',
-          accessibilityValue: { now: 4 },
+          accessibilityValue: { now: 4, min: 0, max: 10 },
           onAccessibilityAction: () => undefined,
         }),
       ]);
@@ -374,6 +589,19 @@ describe('auditHostTree', () => {
         'unhandled-actions',
         'unhandled-actions',
       ]);
+    });
+
+    it('leaves native sliders to handle increment and decrement themselves', () => {
+      expect(
+        rules([
+          node('RNCSlider', {
+            accessible: true,
+            role: 'slider',
+            accessibilityLabel: 'Volume',
+            'aria-valuenow': 4,
+          }),
+        ]),
+      ).toEqual([]);
     });
   });
 
@@ -400,6 +628,14 @@ describe('auditHostTree', () => {
       expect(rules([node('RCTView', { pointerEvents: 'box-none' }, [button()])])).toEqual([]);
       expect(rules([button({ pointerEvents: 'box-only' })])).toEqual([]);
       expect(rules([button({ pointerEvents: 'box-none' })])).toEqual([]);
+    });
+
+    it('ignores a disabled prop on a view, which only Text and Switch act on', () => {
+      expect(
+        rules([
+          pressable({ role: 'button', disabled: true, pointerEvents: 'none' }, [label('Pay')]),
+        ]),
+      ).toEqual(['missing-disabled-state']);
     });
 
     it('accepts it when the control is marked disabled', () => {
@@ -445,6 +681,34 @@ describe('auditHostTree', () => {
     expect(summary('ios')).toEqual([['Error', null, true]]);
   });
 
+  it('audits what is inside an empty Text', () => {
+    expect(rules([node('RCTText', {}, [pressable({}, [node('RCTImageView')])])])).toEqual([
+      'missing-label',
+      'missing-role',
+    ]);
+    expect(audit([node('RCTText', { accessibilityLiveRegion: 'polite' })], 'android')).toEqual([
+      expect.objectContaining({ liveRegion: 'polite', focusable: false }),
+    ]);
+  });
+
+  it('lists a live region folded into an accessible parent', () => {
+    const tree = [
+      pressable({ role: 'button' }, [
+        node('RCTView', { accessibilityLiveRegion: 'polite' }, [
+          node('RCTText', {}, [text('3 items')]),
+        ]),
+      ]),
+    ];
+    const summary = (platform: Platform) =>
+      audit(tree, platform).map((item) => [item.label, item.liveRegion, item.focusable]);
+
+    expect(summary('android')).toEqual([
+      ['3 items', null, true],
+      ['3 items', 'polite', false],
+    ]);
+    expect(summary('ios')).toEqual([['3 items', null, true]]);
+  });
+
   describe('font scaling', () => {
     it('flags text that ignores the system font size', () => {
       expect(rules([node('RCTText', { allowFontScaling: false }, [text('Total')])])).toEqual([
@@ -469,6 +733,24 @@ describe('auditHostTree', () => {
       ]);
       expect(elements[1].focusable).toBe(false);
     });
+
+    it('flags text with font scaling disabled even when hidden from screen readers', () => {
+      const [element] = audit([
+        node('RCTView', HIDDEN, [node('RCTText', { allowFontScaling: false }, [text('Price')])]),
+      ]);
+      expect(element).toMatchObject({
+        label: 'Price',
+        focusable: false,
+        issues: [expect.objectContaining({ rule: 'font-scaling-disabled' })],
+      });
+      expect(
+        audit([
+          node('RCTView', { ...HIDDEN, style: { display: 'none' } }, [
+            node('RCTText', { allowFontScaling: false }, [text('Price')]),
+          ]),
+        ]),
+      ).toEqual([]);
+    });
   });
 
   it('audits only a modal view, not the siblings it covers', () => {
@@ -486,15 +768,13 @@ describe('auditHostTree', () => {
       accessible: true,
       role: 'slider',
       accessibilityLabel: 'Volume',
-      accessibilityValue: { now: 4 },
+      accessibilityValue: { now: 4, min: 0, max: 10 },
     });
     const input = node('AndroidTextInput', { accessibilityLabel: 'Email' });
 
-    expect(audit([checkbox, slider, input], 'android').map((e) => e.announcement)).toEqual([
-      'not checked, Terms, check box',
-      '4, Volume, slider',
-      'Email, edit box',
-    ]);
+    expect(
+      audit([checkbox, slider, input], 'android').map((element) => element.announcement),
+    ).toEqual(['not checked, Terms, check box', '40%, Volume, slider', 'Email, edit box']);
   });
 
   it('announces the position of a native switch', () => {
@@ -511,14 +791,25 @@ describe('auditHostTree', () => {
   });
 
   it('names the prop that hides a control from screen readers', () => {
-    const message = (props: Record<string, unknown>) =>
-      audit([node('RCTView', { role: 'button', ...props }, [label('Save')])])[0].issues[0].message;
+    const message = (props: Record<string, unknown>, platform: Platform = 'ios') =>
+      audit([node('RCTView', { role: 'button', ...props }, [label('Save')])], platform)[0].issues[0]
+        .message;
 
     expect(message({ accessible: false })).toContain('accessible={false}');
-    expect(message({ importantForAccessibility: 'no' })).toContain(
+    expect(message({ importantForAccessibility: 'no' }, 'android')).toContain(
       'importantForAccessibility="no"',
     );
     expect(message({})).toContain('accessible={true} is missing');
+  });
+
+  it('ignores importantForAccessibility="no" on iOS, where it has no effect', () => {
+    const button = pressable({ role: 'button', importantForAccessibility: 'no' }, [label('Save')]);
+
+    expect(audit([button], 'ios')[0]).toMatchObject({ focusable: true, issues: [] });
+    expect(audit([button], 'android')[0]).toMatchObject({
+      focusable: false,
+      issues: [expect.objectContaining({ rule: 'not-accessible' })],
+    });
   });
 
   it('reports font scaling on text that is not a screen reader stop', () => {
@@ -546,6 +837,15 @@ describe('auditHostTree', () => {
     expect(audit([button])[0].component).toBe('SaveButton');
   });
 
+  it('names app components that only share a prefix or suffix with framework ones', () => {
+    const named = (componentPath: string[]) =>
+      audit([{ ...pressable({ role: 'button' }, [label('Save')]), componentPath }])[0].component;
+
+    expect(named(['App', 'ThemeProvider', 'Pressable', 'View'])).toBe('ThemeProvider');
+    expect(named(['App', 'AnimatedHeader', 'Animated(View)', 'View'])).toBe('AnimatedHeader');
+    expect(named(['App', 'ScrollViewFooter', 'ScrollView', 'View'])).toBe('ScrollViewFooter');
+  });
+
   it('prefers the component that rendered the element over a wrapper it was passed to', () => {
     const button: HostNode = {
       ...pressable({ role: 'button' }, [label('Save')]),
@@ -563,107 +863,49 @@ describe('auditHostTree', () => {
     expect(result.measureById.get(result.elements[0].id)?.()).toEqual(frame);
   });
 
-  describe('review fixes', () => {
-    it('leaves native sliders to handle increment and decrement themselves', () => {
-      expect(
-        rules([
-          node('RNCSlider', {
-            accessible: true,
-            role: 'slider',
-            accessibilityLabel: 'Volume',
-            'aria-valuenow': 4,
-          }),
-        ]),
-      ).toEqual([]);
-    });
-
-    it('leaves native sliders to announce their own value', () => {
-      const slider = (type: string) =>
-        node(type, { accessible: true, role: 'slider', accessibilityLabel: 'Volume' });
-
-      expect(rules([slider('RNCSlider')])).toEqual([]);
-      expect(rules([slider('RCTView')])).toContain('missing-value');
-    });
-
-    it('ignores pixel rounding in touch target sizes', () => {
-      const button = (height: number) =>
-        pressable({ role: 'button' }, [label('Pay')], { x: 0, y: 0, width: 200, height });
-
-      expect(rules([button(47.99993896484375)], 'android')).toEqual([]);
-      expect(rules([button(47.9)], 'android')).toEqual(['small-touch-target']);
-    });
-
-    it('checks the touch target of a standalone text control', () => {
-      expect(
-        rules([
-          node(
-            'RCTText',
-            { accessible: true, role: 'link', onPress: () => undefined },
-            [text('Forgot password')],
-            { x: 0, y: 0, width: 120, height: 17 },
-          ),
-        ]),
-      ).toEqual(['small-touch-target']);
-    });
-
-    it('checks touch target and disabled state of a nested control', () => {
-      const [, nested] = audit([
-        pressable({ role: 'button' }, [
-          label('Notifications'),
-          node('RCTView', { pointerEvents: 'none' }, [
-            pressable({ role: 'button', accessibilityLabel: 'Toggle' }, [], SMALL),
-          ]),
-        ]),
-      ]);
-      expect(nested.issues.map((issue) => issue.rule)).toEqual([
-        'nested-interactive',
-        'missing-disabled-state',
-        'small-touch-target',
-      ]);
-    });
-
-    it('flags text with font scaling disabled even when hidden from screen readers', () => {
-      const [element] = audit([
-        node('RCTView', { 'aria-hidden': true }, [
-          node('RCTText', { allowFontScaling: false }, [text('Price')]),
-        ]),
-      ]);
-      expect(element).toMatchObject({
-        label: 'Price',
-        focusable: false,
-        issues: [expect.objectContaining({ rule: 'font-scaling-disabled' })],
-      });
-      expect(
-        audit([
-          node('RCTView', { 'aria-hidden': true, style: { display: 'none' } }, [
-            node('RCTText', { allowFontScaling: false }, [text('Price')]),
-          ]),
-        ]),
-      ).toEqual([]);
-    });
-  });
-
   describe('modals', () => {
     const button = (name: string) => pressable({ role: 'button' }, [label(name)]);
     const labels = (roots: HostNode[], platform: Platform = 'ios') =>
       audit(roots, platform).map((element) => element.label);
 
-    it('hides the siblings of an aria-modal view on iOS only', () => {
+    it('hides the siblings of a modal view on iOS only', () => {
       const tree = [
         node('RCTView', {}, [
           button('Behind'),
-          node('RCTView', { 'aria-modal': true }, [button('Dialog')]),
+          node('RCTView', { accessibilityViewIsModal: true }, [button('Dialog')]),
         ]),
       ];
       expect(labels(tree, 'ios')).toEqual(['Dialog']);
       expect(labels(tree, 'android')).toEqual(['Behind', 'Dialog']);
     });
 
-    it('still checks font scaling of text behind an aria-modal view', () => {
+    it('ignores aria-modal on a plain view, which passes it on unused', () => {
+      const tree = [
+        node('RCTView', {}, [
+          button('Behind'),
+          node('RCTView', { 'aria-modal': true }, [button('Dialog')]),
+        ]),
+      ];
+      expect(labels(tree)).toEqual(['Behind', 'Dialog']);
+    });
+
+    it('ignores a modal view that is not displayed', () => {
+      const tree = [
+        node('RCTView', {}, [
+          button('Behind'),
+          node('RCTView', { accessibilityViewIsModal: true, style: { display: 'none' } }, [
+            button('Dialog'),
+          ]),
+        ]),
+      ];
+      expect(labels(tree)).toEqual(['Behind']);
+    });
+
+    it('still checks font scaling of text behind a modal view', () => {
       const tree = [
         node('RCTView', {}, [
           node('RCTText', { allowFontScaling: false }, [text('Price')]),
-          node('RCTView', { 'aria-modal': true }, [button('Dialog')]),
+          node('RCTView', { accessibilityViewIsModal: true }, [button('Dialog')]),
         ]),
       ];
       expect(audit(tree).map((element) => [element.label, element.focusable])).toEqual([
@@ -719,7 +961,7 @@ describe('auditHostTree', () => {
         node('RCTText', { allowFontScaling: false }, [text(name)]),
       ]);
     const tree = [
-      node('RCTView', { 'aria-hidden': true }, [
+      node('RCTView', HIDDEN, [
         node('RNSScreenStack', {}, [screen(2, 'Covered'), screen(2, 'Top')]),
       ]),
     ];

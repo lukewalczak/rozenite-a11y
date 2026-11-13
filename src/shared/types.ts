@@ -42,7 +42,7 @@ export type AccessibilityElement = {
   kind: AccessibilityElementKind;
   /** Host component name, e.g. `RCTView`. */
   hostType: string;
-  /** Nearest app-defined component, when one could be told apart from React Native's own. */
+  /** App component that rendered the element, else the nearest one above it; `null` when none could be told apart from React Native's own. */
   component: string | null;
   /** Composite components above the host element, outermost first. */
   componentPath: string[];
@@ -61,7 +61,7 @@ export type AccessibilityElement = {
   /**
    * Whether a screen reader can focus the element. `false` for elements listed
    * only because they have an issue or are a live region, such as a control
-   * nested in another one.
+   * nested in another one on iOS.
    */
   focusable: boolean;
   /** Approximation of what a screen reader says when the element is focused. */

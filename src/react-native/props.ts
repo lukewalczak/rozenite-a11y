@@ -1,24 +1,7 @@
 import type { AccessibilityElementKind, LiveRegion, Platform } from '../shared/types';
 import type { HostNode } from './host-tree';
-import { ACCESSIBILITY_ROLES, ADJUSTABLE_ROLES, ARIA_ROLES, INTERACTIVE_ROLES } from './roles';
-
-export const asString = (value: unknown): string =>
-  typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
-
-export const asObject = (value: unknown): Record<string, unknown> =>
-  value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-
-export const flattenStyle = (style: unknown): Record<string, unknown> => {
-  if (Array.isArray(style)) {
-    return style.reduce<Record<string, unknown>>(
-      (result, entry) => Object.assign(result, flattenStyle(entry)),
-      {},
-    );
-  }
-  return asObject(style);
-};
+import { ACCESSIBILITY_ROLES, ARIA_ROLES, INTERACTIVE_ROLES } from './roles';
+import { asObject, flattenStyle, isUnknownArray, normalizeText } from './values';
 
 const getKind = (type: string): AccessibilityElementKind => {
   if (/TextInput/i.test(type)) return 'input';
@@ -29,26 +12,31 @@ const getKind = (type: string): AccessibilityElementKind => {
 };
 
 export const getLabel = (node: HostNode): string =>
-  asString(node.props.accessibilityLabel) ||
-  asString(node.props['aria-label']) ||
-  asString(node.props.alt);
+  normalizeText(node.props.accessibilityLabel) ||
+  normalizeText(node.props['aria-label']) ||
+  normalizeText(node.props.alt);
 
 export type RoleInfo = {
   ariaRole: string;
   nativeRole: string;
+  /** The role the platform applies: a valid `role`, else a valid `accessibilityRole`. */
   role: string | null;
-  /** A role React Native ignores is not announced either. */
-  valid: boolean;
+  /** The role as written, even when React Native ignores it. */
+  declaredRole: string | null;
 };
 
 const resolveRole = (node: HostNode): RoleInfo => {
-  const ariaRole = asString(node.props.role);
-  const nativeRole = asString(node.props.accessibilityRole);
+  const ariaRole = normalizeText(node.props.role);
+  const nativeRole = normalizeText(node.props.accessibilityRole);
   return {
     ariaRole,
     nativeRole,
-    role: ariaRole || nativeRole || null,
-    valid: ariaRole ? ARIA_ROLES.has(ariaRole) : ACCESSIBILITY_ROLES.has(nativeRole),
+    role: ARIA_ROLES.has(ariaRole)
+      ? ariaRole
+      : ACCESSIBILITY_ROLES.has(nativeRole)
+        ? nativeRole
+        : null,
+    declaredRole: ariaRole || nativeRole || null,
   };
 };
 
@@ -72,7 +60,9 @@ const getStates = (node: HostNode, kind: AccessibilityElementKind): string[] => 
   if (kind === 'switch' && typeof switchValue === 'boolean') {
     states.push(switchValue ? 'on' : 'off');
   }
-  if (read('disabled') === true || node.props.disabled === true) states.push('disabled');
+  // Only Text and Switch act on a `disabled` prop; a View ignores it.
+  const disabledProp = (kind === 'text' || kind === 'switch') && node.props.disabled === true;
+  if (read('disabled') === true || disabledProp) states.push('disabled');
   if (read('selected') === true) states.push('selected');
   const checked = read('checked');
   if (checked === true) states.push('checked');
@@ -87,22 +77,31 @@ const getStates = (node: HostNode, kind: AccessibilityElementKind): string[] => 
 
 export const getValue = (node: HostNode): string | null => {
   const value = asObject(node.props.accessibilityValue);
-  const text = asString(value.text) || asString(node.props['aria-valuetext']);
+  const text = normalizeText(value.text) || normalizeText(node.props['aria-valuetext']);
   if (text) {
     return text;
   }
-  const now = value.now ?? node.props['aria-valuenow'];
-  return typeof now === 'number' ? String(now) : null;
+  const read = (key: 'now' | 'min' | 'max') => {
+    const number = value[key] ?? node.props[`aria-value${key}`];
+    return typeof number === 'number' ? number : null;
+  };
+  const now = read('now');
+  const min = read('min');
+  const max = read('max');
+  // Both platforms announce a number only together with its range, as a percentage.
+  if (now == null || min == null || max == null || max <= min) {
+    return null;
+  }
+  return `${Math.round(((now - min) / (max - min)) * 100)}%`;
 };
 
-const getActions = (node: HostNode): string[] =>
-  Array.isArray(node.props.accessibilityActions)
-    ? node.props.accessibilityActions
-        .map((action) => asString(asObject(action).name))
-        .filter(Boolean)
+const getActions = (node: HostNode): string[] => {
+  const actions = node.props.accessibilityActions;
+  return isUnknownArray(actions)
+    ? actions.map((action) => normalizeText(asObject(action).name)).filter(Boolean)
     : [];
+};
 
-/** Everything the audit reads from a host node, read once. */
 export type InspectedNode = {
   node: HostNode;
   kind: AccessibilityElementKind;
@@ -125,11 +124,6 @@ export const inspectNode = (node: HostNode): InspectedNode => {
   };
 };
 
-// Native sliders announce their value and handle increment and decrement
-// themselves; a plain view does neither.
-export const isCustomAdjustable = (node: HostNode, role: string | null) =>
-  node.type === 'RCTView' && role != null && ADJUSTABLE_ROLES.has(role);
-
 export const isFontScalingDisabled = (node: HostNode, kind: AccessibilityElementKind) =>
   (kind === 'text' || kind === 'input') &&
   (node.props.allowFontScaling === false || node.props.maxFontSizeMultiplier === 1);
@@ -146,41 +140,3 @@ export const getLiveRegion = (node: HostNode, platform: Platform): LiveRegion | 
 
 export const getPointerEvents = (node: HostNode) =>
   node.props.pointerEvents ?? flattenStyle(node.props.style).pointerEvents;
-
-// Components React Native and its common companions put between an app's own
-// component and the host element. Skipped when naming the component to fix.
-const FRAMEWORK_COMPONENTS = new Set([
-  'ActivityIndicator',
-  'FlatList',
-  'Image',
-  'ImageBackground',
-  'KeyboardAvoidingView',
-  'Pressable',
-  'SafeAreaView',
-  'ScrollView',
-  'SectionList',
-  'Switch',
-  'Text',
-  'TextInput',
-  'TouchableHighlight',
-  'TouchableNativeFeedback',
-  'TouchableOpacity',
-  'TouchableWithoutFeedback',
-  'View',
-  'VirtualizedList',
-]);
-
-const FRAMEWORK_COMPONENT_PATTERN =
-  /^(Animated|AnimatedComponent|CellRenderer|InternalTextInput|TextAncestor|VirtualizedList|ScrollView|RNS|RNC|RNGestureHandler)|(Context|Provider|Consumer)$/;
-
-const isFrameworkComponent = (name: string) =>
-  FRAMEWORK_COMPONENTS.has(name) ||
-  FRAMEWORK_COMPONENT_PATTERN.test(name) ||
-  /^(Animated|Memo|ForwardRef)\(/.test(name);
-
-// The component that rendered the element is the one to edit. Without owner
-// information, fall back to the nearest one above it in the tree.
-export const getComponent = (node: HostNode): string | null =>
-  node.ownerPath.find((name) => !isFrameworkComponent(name)) ??
-  [...node.componentPath].reverse().find((name) => !isFrameworkComponent(name)) ??
-  null;

@@ -1,4 +1,5 @@
 import type { Frame } from '../shared/types';
+import { asObject } from './values';
 
 /**
  * The slice of a React fiber this plugin reads. Fibers are React internals,
@@ -40,26 +41,32 @@ const FORWARD_REF = 11;
 const MEMO_COMPONENT = 14;
 const SIMPLE_MEMO_COMPONENT = 15;
 const OFFSCREEN_COMPONENT = 22;
-const HOST_HOISTABLE = 26;
-const HOST_SINGLETON = 27;
 
 const MAX_COMPONENT_PATH = 8;
 const MAX_OWNER_PATH = 12;
 
 // Development-only UI React Native and this plugin mount inside the app's own
 // root. It is not part of the app, so auditing it would only add noise.
-const IGNORED_COMPONENT = /^(LogBox|DebuggingOverlay|ReactDevToolsOverlay|RozeniteAccessibility)/;
+const IGNORED_COMPONENTS = new Set([
+  'DebuggingOverlay',
+  'LogBoxStateSubscription',
+  'ReactDevToolsOverlay',
+  'ReactDevToolsOverlayDeferred',
+  'RozeniteAccessibility',
+]);
+
+const asName = (value: unknown): string | null =>
+  typeof value === 'string' && value ? value : null;
 
 const getName = (value: unknown): string | null => {
   if (typeof value === 'function') {
-    const fn = value as { displayName?: string; name?: string };
-    return fn.displayName || fn.name || null;
+    return asName('displayName' in value ? value.displayName : null) ?? asName(value.name);
   }
-  if (value && typeof value === 'object') {
-    const wrapper = value as { displayName?: string; render?: unknown; type?: unknown };
-    return wrapper.displayName || getName(wrapper.render) || getName(wrapper.type);
+  if (!value || typeof value !== 'object') {
+    return null;
   }
-  return null;
+  const wrapper = asObject(value);
+  return asName(wrapper.displayName) ?? getName(wrapper.render) ?? getName(wrapper.type);
 };
 
 const getComponentName = (fiber: FiberLike): string | null => {
@@ -77,19 +84,20 @@ const getComponentName = (fiber: FiberLike): string | null => {
 
 const getOwnerPath = (fiber: FiberLike): string[] => {
   const names: string[] = [];
-  let owner = fiber._debugOwner as (FiberLike & { name?: unknown }) | null | undefined;
+  let owner = fiber._debugOwner;
   for (let depth = 0; owner && depth < MAX_OWNER_PATH; depth += 1) {
+    const { tag, type, name: ownName, _debugOwner } = asObject(owner);
     // Server components are described by a plain `{ name }` instead of a fiber.
     const name =
-      typeof owner.tag === 'number'
-        ? getComponentName(owner)
-        : typeof owner.name === 'string'
-          ? owner.name
+      typeof tag === 'number'
+        ? getComponentName({ tag, type })
+        : typeof ownName === 'string'
+          ? ownName
           : null;
     if (name) {
       names.push(name);
     }
-    owner = owner._debugOwner as typeof owner;
+    owner = _debugOwner;
   }
   return names;
 };
@@ -123,12 +131,8 @@ const walk = (
       continue;
     }
 
-    if (
-      fiber.tag === HOST_COMPONENT ||
-      fiber.tag === HOST_HOISTABLE ||
-      fiber.tag === HOST_SINGLETON
-    ) {
-      const props = (fiber.memoizedProps ?? {}) as Record<string, unknown>;
+    if (fiber.tag === HOST_COMPONENT) {
+      const props = asObject(fiber.memoizedProps);
       const stateNode = fiber.stateNode;
       const node: HostNode = {
         type: typeof fiber.type === 'string' ? fiber.type : 'Unknown',
@@ -139,21 +143,13 @@ const walk = (
         measure: () => measure(stateNode),
       };
 
-      // React DOM keeps a lone string child in props instead of a text fiber.
-      if (
-        !fiber.child &&
-        (typeof props.children === 'string' || typeof props.children === 'number')
-      ) {
-        node.children.push(textNode(String(props.children), path));
-      }
-
       walk(fiber.child, path, node.children, measure);
       out.push(node);
       continue;
     }
 
     const name = getComponentName(fiber);
-    if (name && IGNORED_COMPONENT.test(name)) {
+    if (name && IGNORED_COMPONENTS.has(name)) {
       continue;
     }
 

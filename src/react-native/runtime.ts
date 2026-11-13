@@ -1,5 +1,6 @@
 import type { Frame } from '../shared/types';
 import type { FiberLike } from './host-tree';
+import { asObject } from './values';
 
 type DevToolsHook = {
   renderers?: Map<number, unknown>;
@@ -53,20 +54,9 @@ const toFrame = (x: unknown, y: unknown, width: unknown, height: unknown): Frame
 
 /** Measures a host fiber's `stateNode` in window coordinates, synchronously. */
 export const measureHostInstance = (stateNode: unknown): Frame | null => {
-  if (!stateNode || typeof stateNode !== 'object') {
-    return null;
-  }
-
   try {
-    // Web DOM elements, and Fabric instances on React Native versions with DOM APIs.
-    const element = stateNode as { getBoundingClientRect?: () => Partial<Frame> };
-    if (typeof element.getBoundingClientRect === 'function') {
-      const rect = element.getBoundingClientRect();
-      return toFrame(rect.x, rect.y, rect.width, rect.height);
-    }
-
     // A Fabric instance, whose shadow node the UI manager can measure directly.
-    const shadowNode = (stateNode as { node?: unknown }).node;
+    const shadowNode = asObject(stateNode).node;
     const uiManager = (globalThis as Globals).nativeFabricUIManager;
     if (shadowNode && typeof uiManager?.getBoundingClientRect === 'function') {
       const rect = uiManager.getBoundingClientRect(shadowNode, true);

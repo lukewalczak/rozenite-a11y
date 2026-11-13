@@ -81,7 +81,7 @@ describe('collectHostNodes', () => {
 
   it('skips development overlays mounted in the app root', () => {
     const tree = root([
-      component('LogBoxNotificationContainer', [host('RCTView', { testID: 'logbox' })]),
+      component('LogBoxStateSubscription', [host('RCTView', { testID: 'logbox' })]),
       component('RozeniteAccessibility', [host('RCTView', { testID: 'outline' })]),
       component('App', [host('RCTView', { testID: 'app' })]),
     ]);
@@ -89,18 +89,10 @@ describe('collectHostNodes', () => {
     expect(collectHostNodes([tree], noMeasure).map((node) => node.props.testID)).toEqual(['app']);
   });
 
-  it('turns a lone string child, as React DOM stores it, into a text node', () => {
-    const [button] = collectHostNodes([root([host('button', { children: 'Save' })])], noMeasure);
+  it('keeps app components named like an overlay', () => {
+    const tree = root([component('LogBoxDemo', [host('RCTView', { testID: 'demo' })])]);
 
-    expect(button.children).toEqual([
-      expect.objectContaining({ type: TEXT_NODE_TYPE, text: 'Save' }),
-    ]);
-  });
-
-  it('does not repeat text that React Native keeps both in props and as a text fiber', () => {
-    const tree = root([host('RCTText', { children: 'Save' }, [fiber(TEXT, null, 'Save')])]);
-
-    expect(collectHostNodes([tree], noMeasure)[0].children).toHaveLength(1);
+    expect(collectHostNodes([tree], noMeasure).map((node) => node.props.testID)).toEqual(['demo']);
   });
 
   it('records the components that rendered an element, nearest first', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AccessibilityElement } from '../../shared/types';
-import { filterElements } from '../filter-elements';
+import { filterElements, type ElementFilter } from '../filter-elements';
 
 const element = (
   id: string,
@@ -35,7 +35,7 @@ const elements = [
   element('live', { liveRegion: 'polite', announcement: 'Saved' }),
 ];
 
-const ids = (filter: 'all' | 'issues' | 'live', search = '') =>
+const ids = (filter: ElementFilter, search = '') =>
   filterElements(elements, filter, search).map((item) => item.id);
 
 describe('filterElements', () => {
@@ -45,10 +45,12 @@ describe('filterElements', () => {
     expect(ids('live')).toEqual(['live']);
   });
 
-  it('searches announcement, component and rule', () => {
+  it('searches announcement, component, host and rule', () => {
     expect(ids('all', ' welcome ')).toEqual(['plain']);
     expect(ids('all', 'savebutton')).toEqual(['broken']);
     expect(ids('all', 'missing-label')).toEqual(['broken']);
+    expect(ids('all', 'missing label')).toEqual(['broken']);
+    expect(ids('all', 'rctview')).toEqual(['plain', 'broken', 'live']);
     expect(ids('live', 'welcome')).toEqual([]);
   });
 });

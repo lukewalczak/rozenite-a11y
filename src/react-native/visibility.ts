@@ -1,18 +1,21 @@
 import type { AccessibilityElementKind, Platform } from '../shared/types';
 import { TEXT_NODE_TYPE, type HostNode } from './host-tree';
-import { asString, flattenStyle, getLabel } from './props';
+import { getLabel } from './props';
+import { flattenStyle, normalizeText } from './values';
 
 const isScreen = (node: HostNode) => /^RNS(Modal|Stack)?Screen$/.test(node.type);
 
+export const isNotDisplayed = (node: HostNode): boolean =>
+  (isScreen(node) && node.props.activityState === 0) ||
+  flattenStyle(node.props.style).display === 'none';
+
 // On iOS a modal view hides its siblings from VoiceOver. Android has no equivalent.
+// Pressable turns `aria-modal` into `accessibilityViewIsModal`; a View passes it on unused.
 export const getModalChild = (node: HostNode, platform: Platform): HostNode | undefined =>
   platform === 'ios'
     ? [...node.children]
         .reverse()
-        .find(
-          (child) =>
-            child.props.accessibilityViewIsModal === true || child.props['aria-modal'] === true,
-        )
+        .find((child) => child.props.accessibilityViewIsModal === true && !isNotDisplayed(child))
     : undefined;
 
 /** The children on screen: all of them, except the screens a native stack covers. */
@@ -34,10 +37,6 @@ const getVisibleChildren = (node: HostNode, platform: Platform): HostNode[] => {
   return modal ? [modal] : getShownChildren(node);
 };
 
-export const isNotDisplayed = (node: HostNode): boolean =>
-  (isScreen(node) && node.props.activityState === 0) ||
-  flattenStyle(node.props.style).display === 'none';
-
 const MODAL_HOST_TYPE = 'RCTModalHostView';
 
 /** The open React Native `<Modal>` drawn on top of everything else, if any. */
@@ -56,15 +55,16 @@ export const findTopModalHost = (nodes: HostNode[]): HostNode | undefined => {
   return top;
 };
 
-// `aria-hidden` works on both platforms; the older props each work on one only.
+// View turns `aria-hidden` into both of these props, and each works on one platform
+// only. Other components pass `aria-hidden` on unused.
 export const isHiddenFromScreenReader = (node: HostNode, platform: Platform): boolean =>
-  node.props['aria-hidden'] === true ||
-  (platform === 'ios'
+  platform === 'ios'
     ? node.props.accessibilityElementsHidden === true
-    : node.props.importantForAccessibility === 'no-hide-descendants');
+    : node.props.importantForAccessibility === 'no-hide-descendants';
 
-const isHidden = (node: HostNode, platform: Platform): boolean =>
-  isHiddenFromScreenReader(node, platform) || isNotDisplayed(node);
+// `importantForAccessibility` is an Android prop; iOS ignores it.
+export const isMarkedUnimportant = (node: HostNode, platform: Platform): boolean =>
+  platform !== 'ios' && node.props.importantForAccessibility === 'no';
 
 // Android reads plain text even though React Native reports it as not accessible.
 export const isScreenReaderStop = (
@@ -72,14 +72,14 @@ export const isScreenReaderStop = (
   kind: AccessibilityElementKind,
   platform: Platform,
 ): boolean => {
-  const { accessible, importantForAccessibility } = node.props;
+  const { accessible } = node.props;
   const isNativeStop =
     kind === 'input' || kind === 'switch'
       ? accessible !== false
       : kind === 'text' && node.type !== 'RCTVirtualText'
         ? !(platform === 'ios' && accessible === false)
         : false;
-  return importantForAccessibility !== 'no' && (accessible === true || isNativeStop);
+  return !isMarkedUnimportant(node, platform) && (accessible === true || isNativeStop);
 };
 
 /** The text a screen reader assembles for an element that has no label of its own. */
@@ -90,7 +90,7 @@ export const collectText = (node: HostNode, platform: Platform): string => {
       parts.push(current.text ?? '');
       return;
     }
-    if (isHidden(current, platform)) {
+    if (isHiddenFromScreenReader(current, platform) || isNotDisplayed(current)) {
       return;
     }
     const label = getLabel(current);
@@ -101,5 +101,8 @@ export const collectText = (node: HostNode, platform: Platform): string => {
     getVisibleChildren(current, platform).forEach(visit);
   };
   getVisibleChildren(node, platform).forEach(visit);
-  return asString(parts.join(' '));
+  return normalizeText(parts.join(' '));
 };
+
+export const getAccessibleName = (node: HostNode, platform: Platform): string =>
+  getLabel(node) || collectText(node, platform);

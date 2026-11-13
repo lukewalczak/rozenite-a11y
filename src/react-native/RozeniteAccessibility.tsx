@@ -1,7 +1,11 @@
 import { createRozeniteRpc, useRozeniteDevToolsClient } from '@rozenite/plugin-bridge';
 import { useEffect, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import { AccessibilityInfo, PixelRatio, Platform, StyleSheet, View } from 'react-native';
-import { ACCESSIBILITY_PLUGIN_ID, type AccessibilityMethods } from '../shared/messaging';
+import {
+  ACCESSIBILITY_PLUGIN_ID,
+  DEVICE_READY_EVENT,
+  type AccessibilityMethods,
+} from '../shared/messaging';
 import type { AccessibilityAudit, AccessibilitySystemState, Frame } from '../shared/types';
 import { auditHostTree } from './audit';
 import { collectHostNodes } from './host-tree';
@@ -11,9 +15,9 @@ const HIGHLIGHT_COLOR = '#ff4f7b';
 
 // Some of these settings exist on one platform only, and a query for a
 // missing one must not fail the whole audit.
-const readSetting = (read: (() => Promise<boolean>) | undefined): Promise<boolean> => {
+const readSetting = (read: () => Promise<boolean>): Promise<boolean> => {
   try {
-    return read ? read().catch(() => false) : Promise.resolve(false);
+    return read().catch(() => false);
   } catch {
     return Promise.resolve(false);
   }
@@ -28,12 +32,12 @@ const getSystemState = async (): Promise<AccessibilitySystemState> => {
     invertColorsEnabled,
     reduceTransparencyEnabled,
   ] = await Promise.all([
-    readSetting(AccessibilityInfo.isScreenReaderEnabled),
-    readSetting(AccessibilityInfo.isReduceMotionEnabled),
-    readSetting(AccessibilityInfo.isBoldTextEnabled),
-    readSetting(AccessibilityInfo.isGrayscaleEnabled),
-    readSetting(AccessibilityInfo.isInvertColorsEnabled),
-    readSetting(AccessibilityInfo.isReduceTransparencyEnabled),
+    readSetting(() => AccessibilityInfo.isScreenReaderEnabled()),
+    readSetting(() => AccessibilityInfo.isReduceMotionEnabled()),
+    readSetting(() => AccessibilityInfo.isBoldTextEnabled()),
+    readSetting(() => AccessibilityInfo.isGrayscaleEnabled()),
+    readSetting(() => AccessibilityInfo.isInvertColorsEnabled()),
+    readSetting(() => AccessibilityInfo.isReduceTransparencyEnabled()),
   ]);
 
   return {
@@ -102,7 +106,7 @@ export const RozeniteAccessibility = (): ReactNode => {
         const frame = id == null ? null : (measureByIdRef.current.get(id)?.() ?? null);
         if (!frame) {
           setHighlight(null);
-          return { highlighted: false };
+          return;
         }
 
         // Frames are in window coordinates; the outline is positioned inside
@@ -119,12 +123,12 @@ export const RozeniteAccessibility = (): ReactNode => {
 
         // A newer request or the cleanup below has taken over in the meantime.
         if (!origin || request !== highlightRequestRef.current) {
-          return { highlighted: false };
+          return;
         }
         setHighlight({ ...frame, x: frame.x - origin.x, y: frame.y - origin.y });
-        return { highlighted: true };
       }),
     ];
+    client.send(DEVICE_READY_EVENT, {});
 
     return () => {
       highlightRequestRef.current++;

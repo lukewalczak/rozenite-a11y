@@ -9,15 +9,15 @@ It reads the mounted component tree and lists what a screen reader would stop on
 - **Reading order**: every element a screen reader can focus on the current screen, with its announcement (label, role and state). Elements listed only for an issue or a live region are marked as not focusable
 - **Missing labels**: controls, images and text inputs a screen reader cannot name
 - **Missing roles**: pressable elements that are not announced as something to activate
-- **Invalid roles, state and values**: roles React Native ignores, checkboxes that do not say whether they are checked, sliders without a value
+- **Invalid roles, state and values**: roles React Native ignores, checkboxes that do not say whether they are checked, sliders, meters and spin buttons without a value
 - **Font scaling**: text that ignores the font size set in system settings
 - **Accessibility actions**: declared actions nothing handles, handlers with no actions, adjustable elements without increment and decrement
 - **Disabled state**: controls that ignore touches but are announced as usable
 - **Live regions**: which elements announce their changes on their own, including containers a screen reader does not stop on (Android only; VoiceOver ignores `aria-live`)
 - **Touch targets**: controls smaller than 44×44 pt on iOS or 48×48 dp on Android, counting `hitSlop`
 - **Nested controls**: controls inside another accessible element, which VoiceOver cannot reach
-- **Hidden controls**: controls a screen reader cannot reach, because of `accessible={false}`, `importantForAccessibility="no"` or a missing `accessible`
-- **Filter and search**: show all elements, only those with issues or only live regions, and search by announcement, component or rule
+- **Hidden controls**: controls a screen reader cannot reach, because of `accessible={false}`, `importantForAccessibility="no"` (Android), or a missing `accessible`
+- **Filter and search**: show all elements, only those with issues or only live regions, and search by announcement, component, host view or rule
 - **Outline in the app**: select an element in the panel to see where it is on the device
 - **Component names**: each element names the component that rendered it
 - **System settings**: screen reader, font scale, reduce motion and other accessibility settings of the device
@@ -49,11 +49,16 @@ Open the **Accessibility** panel in React Native DevTools. It audits the screen 
 
 ## Notes
 
-- The component is **development-only**: in production (`NODE_ENV === 'production'`) it renders nothing and the audit code is left out of the bundle.
+- The component is **development-only**: in production (`NODE_ENV === 'production'`) and on platforms other than iOS and Android it renders nothing. Production bundles leave the audit code out.
 - The audit is a static check of props and layout. It does not replace testing with VoiceOver or TalkBack, and it does not check colour contrast or focus order.
 - A control counts as ignoring touches when it or an ancestor sets `pointerEvents`. Other ways of disabling it, such as `editable={false}` on a text input, are not checked.
 - The reading order follows the component tree, which is an approximation of the order the platform uses.
 - Native views that are not React components (maps, web views, native navigation bars) are not part of the audit.
+- Controls under `aria-hidden` are not listed, since navigation libraries hide off-screen pages that way.
+- Every mounted React root is audited together, so in apps with a root per screen (such as react-native-navigation) covered screens are listed too.
+- The outline is measured once, when an element is selected. It does not follow scrolling or animation, and stays in place after navigating until another element is selected or the audit runs again.
+- The outline is drawn in the app's own window, so it is hidden behind an open `<Modal>` or a native modal screen.
+- When the React Native root view does not start at the top of the window, as in some brownfield apps, the outline may be offset.
 - The tree is read through the React DevTools hook, which exists in development builds only.
 
 ## Requirements

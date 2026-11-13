@@ -20,35 +20,25 @@ import { useEffect, useMemo, useState } from 'react';
 import type {
   AccessibilityAudit,
   AccessibilityElement,
-  AccessibilityRuleId,
   AccessibilitySystemState,
-  Platform,
 } from '../shared/types';
 import { formatNumber } from '../shared/format';
-import { countIssues, filterElements, type ElementFilter } from './filter-elements';
+import {
+  ELEMENT_FILTERS,
+  countIssues,
+  filterElements,
+  type ElementFilter,
+} from './filter-elements';
+import { RULE_TITLES } from './rule-titles';
 import { useAccessibilityAudit } from './use-accessibility-audit';
 import './globals.css';
 
-const RULE_TITLES: Record<AccessibilityRuleId, string> = {
-  'missing-label': 'Missing label',
-  'missing-role': 'Missing role',
-  'input-missing-label': 'Input without a label',
-  'image-missing-label': 'Image without a label',
-  'small-touch-target': 'Small touch target',
-  'nested-interactive': 'Nested control',
-  'not-accessible': 'Hidden from screen readers',
-  'invalid-role': 'Invalid role',
-  'missing-state': 'Missing state',
-  'missing-value': 'Missing value',
-  'font-scaling-disabled': 'Font scaling disabled',
-  'unhandled-actions': 'Accessibility actions',
-  'missing-disabled-state': 'Missing disabled state',
-};
+const SEVERITY_TONES = { error: 'danger', warning: 'warning' } as const;
 
 const getTone = (element: AccessibilityElement) => {
-  if (element.issues.some((issue) => issue.severity === 'error')) return 'danger';
-  if (element.issues.length > 0) return 'warning';
-  return 'success';
+  if (element.issues.length === 0) return 'success';
+  const hasError = element.issues.some((issue) => issue.severity === 'error');
+  return SEVERITY_TONES[hasError ? 'error' : 'warning'];
 };
 
 function ElementRow({
@@ -94,14 +84,13 @@ function ElementRow({
 
 function ElementDetails({
   element,
-  platform,
-  minTouchTarget,
+  audit,
 }: {
   element: AccessibilityElement;
-  platform: Platform;
-  minTouchTarget: number;
+  audit: AccessibilityAudit;
 }) {
   const { frame } = element;
+  const { platform, minTouchTarget } = audit;
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -128,10 +117,7 @@ function ElementDetails({
         </Alert>
       ) : (
         element.issues.map((issue, index) => (
-          <Alert
-            key={`${issue.rule}-${index}`}
-            tone={issue.severity === 'error' ? 'danger' : 'warning'}
-          >
+          <Alert key={`${issue.rule}-${index}`} tone={SEVERITY_TONES[issue.severity]}>
             <Alert.Title>{RULE_TITLES[issue.rule]}</Alert.Title>
             <Alert.Description>{issue.message}</Alert.Description>
           </Alert>
@@ -238,8 +224,6 @@ function AccessibilityPanelContent() {
     highlight(selectedId);
   }, [highlight, selectedId]);
 
-  useEffect(() => () => highlight(null), [highlight]);
-
   const elements = useMemo(() => audit?.elements ?? [], [audit]);
   const counts = useMemo(() => countIssues(elements), [elements]);
   const visibleElements = useMemo(
@@ -248,6 +232,10 @@ function AccessibilityPanelContent() {
   );
   const liveCount = useMemo(
     () => elements.filter((element) => element.liveRegion).length,
+    [elements],
+  );
+  const withIssuesCount = useMemo(
+    () => elements.filter((element) => element.issues.length > 0).length,
     [elements],
   );
   const selectedElement = elements.find((element) => element.id === selectedId) ?? null;
@@ -268,15 +256,15 @@ function AccessibilityPanelContent() {
             size="sm"
             value={[filter]}
             onValueChange={(next) => {
-              const value = next[0];
-              if (value === 'all' || value === 'issues' || value === 'live') setFilter(value);
+              const value = ELEMENT_FILTERS.find((option) => option === next[0]);
+              if (value) setFilter(value);
             }}
           >
             <ToggleGroup.Item size="sm" value="all">
               All {elements.length}
             </ToggleGroup.Item>
             <ToggleGroup.Item size="sm" value="issues">
-              Issues {counts.errors + counts.warnings}
+              Issues {withIssuesCount}
             </ToggleGroup.Item>
             <ToggleGroup.Item size="sm" value="live">
               Live {liveCount}
@@ -355,11 +343,7 @@ function AccessibilityPanelContent() {
               <Split.Pane>
                 <div className="h-full overflow-auto">
                   {selectedElement ? (
-                    <ElementDetails
-                      element={selectedElement}
-                      platform={audit.platform}
-                      minTouchTarget={audit.minTouchTarget}
-                    />
+                    <ElementDetails element={selectedElement} audit={audit} />
                   ) : (
                     <EmptyState
                       icon={Info}

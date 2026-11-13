@@ -1,0 +1,17 @@
+import type { AccessibilityRuleId } from '../shared/types';
+
+export const RULE_TITLES: Record<AccessibilityRuleId, string> = {
+  'missing-label': 'Missing label',
+  'missing-role': 'Missing role',
+  'input-missing-label': 'Input without a label',
+  'image-missing-label': 'Image without a label',
+  'small-touch-target': 'Small touch target',
+  'nested-interactive': 'Nested control',
+  'not-accessible': 'Hidden from screen readers',
+  'invalid-role': 'Invalid role',
+  'missing-state': 'Missing state',
+  'missing-value': 'Missing value',
+  'font-scaling-disabled': 'Font scaling disabled',
+  'unhandled-actions': 'Accessibility actions',
+  'missing-disabled-state': 'Missing disabled state',
+};

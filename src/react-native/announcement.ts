@@ -26,7 +26,6 @@ const ANDROID_SPOKEN_ROLES: Record<string, string> = {
   radio: 'radio button',
 };
 
-/** Approximation of what a screen reader says when the element is focused. */
 export const getAnnouncement = (
   element: Pick<AccessibilityElement, 'label' | 'role' | 'kind' | 'states' | 'value'>,
   platform: Platform,

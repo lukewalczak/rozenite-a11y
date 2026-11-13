@@ -3,7 +3,9 @@ export const INTERACTIVE_ROLES = new Set([
   'button',
   'checkbox',
   'combobox',
+  'dropdownlist',
   'imagebutton',
+  'keyboardkey',
   'link',
   'menuitem',
   'radio',
@@ -39,6 +41,7 @@ export const ARIA_ROLES = new Set(
 
 export const CHECKABLE_ROLES = new Set(['checkbox', 'radio', 'switch', 'togglebutton']);
 
-export const VALUE_ROLES = new Set(['adjustable', 'meter', 'progressbar', 'slider', 'spinbutton']);
+// A progress bar is left out: an indeterminate one has no value to announce.
+export const VALUE_ROLES = new Set(['adjustable', 'meter', 'slider', 'spinbutton']);
 
 export const ADJUSTABLE_ROLES = new Set(['adjustable', 'slider']);

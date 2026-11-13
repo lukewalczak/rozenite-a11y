@@ -1,6 +1,9 @@
 import type { AccessibilityElement } from '../shared/types';
+import { RULE_TITLES } from './rule-titles';
 
-export type ElementFilter = 'all' | 'issues' | 'live';
+export const ELEMENT_FILTERS = ['all', 'issues', 'live'] as const;
+
+export type ElementFilter = (typeof ELEMENT_FILTERS)[number];
 
 export const countIssues = (elements: AccessibilityElement[]) => {
   let errors = 0;
@@ -35,7 +38,7 @@ export const filterElements = (
       element.announcement,
       element.component ?? '',
       element.hostType,
-      ...element.issues.map((issue) => issue.rule),
+      ...element.issues.flatMap((issue) => [issue.rule, RULE_TITLES[issue.rule]]),
     ].some((value) => value.toLowerCase().includes(term));
   });
 };

@@ -1,22 +1,22 @@
-import type { AccessibilityIssue, Frame, Platform } from '../shared/types';
+import type {
+  AccessibilityElementKind,
+  AccessibilityIssue,
+  Frame,
+  Platform,
+} from '../shared/types';
 import { formatNumber, roundToTenth } from '../shared/format';
 import type { HostNode } from './host-tree';
-import {
-  asObject,
-  asString,
-  getValue,
-  isCustomAdjustable,
-  readState,
-  type InspectedNode,
-} from './props';
+import { getLabel, getValue, readState, type InspectedNode, type RoleInfo } from './props';
 import {
   ACCESSIBILITY_ROLES,
   ADJUSTABLE_ROLES,
   ARIA_ROLES,
   CHECKABLE_ROLES,
+  INTERACTIVE_ROLES,
   VALUE_ROLES,
 } from './roles';
-import { collectText } from './visibility';
+import { asObject, isUnknownArray, normalizeText } from './values';
+import { getAccessibleName, isMarkedUnimportant } from './visibility';
 
 // Apple's Human Interface Guidelines ask for 44pt, Material Design for 48dp.
 export const getMinTouchTarget = (platform: Platform) => (platform === 'android' ? 48 : 44);
@@ -35,11 +35,18 @@ export const IMAGE_MISSING_LABEL_ISSUE: AccessibilityIssue = {
     'Image is invisible to screen readers. Add alt text if it carries meaning, or accessible={false} if it is decorative.',
 };
 
-const MISSING_ROLE_ISSUE: AccessibilityIssue = {
-  rule: 'missing-role',
+const FOCUSABLE_IMAGE_MISSING_LABEL_ISSUE: AccessibilityIssue = {
+  rule: 'image-missing-label',
+  severity: 'error',
+  message:
+    'Image is focusable by screen readers but has no label. Add alt text, or accessible={false} if it is decorative.',
+};
+
+export const IMAGE_NOT_ACCESSIBLE_ISSUE: AccessibilityIssue = {
+  rule: 'not-accessible',
   severity: 'warning',
   message:
-    'Control has no role, so a screen reader does not say that it can be activated. Add role="button" (or link, tab, checkbox…).',
+    'Image has a label but is not accessible, so VoiceOver skips it. Use alt instead of accessibilityLabel, or add accessible.',
 };
 
 const MISSING_DISABLED_STATE_ISSUE: AccessibilityIssue = {
@@ -63,27 +70,43 @@ const ADJUSTABLE_WITHOUT_ACTIONS_ISSUE: AccessibilityIssue = {
     'An adjustable element is changed by swiping up and down, which needs the increment and decrement accessibilityActions.',
 };
 
-const getInvalidRoleIssue = ({ ariaRole, nativeRole }: InspectedNode['role']) => {
-  if (ariaRole) {
-    return ARIA_ROLES.has(ariaRole)
-      ? null
-      : {
-          rule: 'invalid-role',
-          severity: 'warning',
-          message: `"${ariaRole}" is not a role React Native knows, so it is ignored.`,
-        } satisfies AccessibilityIssue;
+const getMissingRoleIssue = (role: string | null): AccessibilityIssue => ({
+  rule: 'missing-role',
+  severity: 'warning',
+  message: `${
+    role
+      ? `Control has role "${role}", which does not tell a screen reader`
+      : 'Control has no role, so a screen reader does not say'
+  } that it can be activated. Use role="button" (or link, tab, checkbox…).`,
+});
+
+// Native sliders announce their value and handle increment and decrement
+// themselves; any other host with a slider role does neither.
+const NATIVE_SLIDER_HOSTS = new Set(['RNCSlider']);
+
+const isNativeSlider = (node: HostNode) => NATIVE_SLIDER_HOSTS.has(node.type);
+
+/** `role` and `accessibilityRole` are checked apart: Android applies both. */
+export const getInvalidRoleIssues = ({ ariaRole, nativeRole }: RoleInfo): AccessibilityIssue[] => {
+  const issues: AccessibilityIssue[] = [];
+  if (ariaRole && !ARIA_ROLES.has(ariaRole)) {
+    issues.push({
+      rule: 'invalid-role',
+      severity: 'warning',
+      message: `"${ariaRole}" is not a role React Native knows, so it is ignored.`,
+    });
   }
-  if (!nativeRole || ACCESSIBILITY_ROLES.has(nativeRole)) {
-    return null;
+  if (nativeRole && !ACCESSIBILITY_ROLES.has(nativeRole)) {
+    issues.push({
+      rule: 'invalid-role',
+      // Not just unannounced: Android rejects the value and the view fails to mount.
+      severity: 'error',
+      message: ARIA_ROLES.has(nativeRole)
+        ? `"${nativeRole}" is a value of the role prop, not of accessibilityRole. iOS ignores it and Android throws. Use role="${nativeRole}".`
+        : `"${nativeRole}" is not an accessibilityRole React Native knows. iOS ignores it and Android throws.`,
+    });
   }
-  return {
-    rule: 'invalid-role',
-    // Not just unannounced: Android rejects the value and the view fails to mount.
-    severity: 'error',
-    message: ARIA_ROLES.has(nativeRole)
-      ? `"${nativeRole}" is a value of the role prop, not of accessibilityRole. iOS ignores it and Android throws. Use role="${nativeRole}".`
-      : `"${nativeRole}" is not an accessibilityRole React Native knows. iOS ignores it and Android throws.`,
-  } satisfies AccessibilityIssue;
+  return issues;
 };
 
 /** Checks of the role itself and of the state and value that role is expected to carry. */
@@ -92,15 +115,11 @@ export const getRoleIssues = ({
   kind,
   role: roleInfo,
 }: InspectedNode): AccessibilityIssue[] => {
-  const issues: AccessibilityIssue[] = [];
-  const invalidRole = getInvalidRoleIssue(roleInfo);
-  if (invalidRole) {
-    issues.push(invalidRole);
-  }
-
+  const issues = getInvalidRoleIssues(roleInfo);
   const role = roleInfo.role ?? '';
 
-  if (kind === 'view' && CHECKABLE_ROLES.has(role)) {
+  // A native switch and a text input report their own state.
+  if (kind !== 'switch' && kind !== 'input' && CHECKABLE_ROLES.has(role)) {
     const checked = readState(node, 'checked');
     const selected = readState(node, 'selected');
     if (checked === undefined && !(role === 'radio' && selected !== undefined)) {
@@ -112,12 +131,11 @@ export const getRoleIssues = ({
     }
   }
 
-  const announcesOwnValue = ADJUSTABLE_ROLES.has(role) && !isCustomAdjustable(node, role);
-  if (VALUE_ROLES.has(role) && !announcesOwnValue && getValue(node) == null) {
+  if (VALUE_ROLES.has(role) && !isNativeSlider(node) && getValue(node) == null) {
     issues.push({
       rule: 'missing-value',
       severity: 'warning',
-      message: `A ${role} has to announce its current value. Set accessibilityValue or aria-valuenow / aria-valuetext.`,
+      message: `A ${role} has to announce its current value. Set accessibilityValue.text, or now together with min and max (or aria-valuetext, or aria-valuenow with aria-valuemin and aria-valuemax).`,
     });
   }
 
@@ -143,7 +161,9 @@ export const getBehaviorIssues = (
   }
 
   if (
-    isCustomAdjustable(node, role.role) &&
+    role.role != null &&
+    ADJUSTABLE_ROLES.has(role.role) &&
+    !isNativeSlider(node) &&
     !(actions.includes('increment') && actions.includes('decrement'))
   ) {
     issues.push(ADJUSTABLE_WITHOUT_ACTIONS_ISSUE);
@@ -165,13 +185,12 @@ export const getNestedIssue = (platform: Platform): AccessibilityIssue => ({
       : 'Control is nested inside another accessible element. TalkBack focuses it separately, without the text around it, and VoiceOver cannot focus it at all. Give it its own label, or move it out of the parent.',
 });
 
-export const getNotAccessibleIssue = (node: HostNode): AccessibilityIssue => {
-  const reason =
-    node.props.importantForAccessibility === 'no'
-      ? 'importantForAccessibility="no"'
-      : node.props.accessible === false
-        ? 'accessible={false}'
-        : 'accessible={true} is missing';
+export const getNotAccessibleIssue = (node: HostNode, platform: Platform): AccessibilityIssue => {
+  const reason = isMarkedUnimportant(node, platform)
+    ? 'importantForAccessibility="no"'
+    : node.props.accessible === false
+      ? 'accessible={false}'
+      : 'accessible={true} is missing';
   return {
     rule: 'not-accessible',
     severity: 'warning',
@@ -179,23 +198,31 @@ export const getNotAccessibleIssue = (node: HostNode): AccessibilityIssue => {
   };
 };
 
+const hasLabelledBy = (value: unknown) =>
+  isUnknownArray(value)
+    ? value.some((id) => normalizeText(id) !== '')
+    : normalizeText(value) !== '';
+
 /**
  * The label and naming issues of a screen reader stop. `null` for an empty Text,
  * which renders nothing and is skipped by screen readers.
  */
-export const getStopLabel = (
+export const getStopNaming = (
   { node, kind, interactive, role }: InspectedNode,
-  ownLabel: string,
   platform: Platform,
 ): { label: string; issues: AccessibilityIssue[] } | null => {
   const { props } = node;
-  const content = ownLabel || collectText(node, platform);
+  const ownLabel = getLabel(node);
+  const content = getAccessibleName(node, platform);
   const issues: AccessibilityIssue[] = [];
   let label = content;
 
   if (kind === 'input') {
-    const placeholder = asString(props.placeholder);
-    const labelledBy = props.accessibilityLabelledBy ?? props['aria-labelledby'];
+    const placeholder = normalizeText(props.placeholder);
+    // Only Android names an input after the view it is labelled by.
+    const labelledBy =
+      platform === 'android' &&
+      hasLabelledBy(props.accessibilityLabelledBy ?? props['aria-labelledby']);
     label = ownLabel || placeholder;
     if (!ownLabel && !labelledBy) {
       issues.push({
@@ -210,17 +237,22 @@ export const getStopLabel = (
     if (kind === 'text' && !interactive) {
       return null;
     }
-    issues.push({
-      rule: 'missing-label',
-      severity: interactive || kind === 'image' ? 'error' : 'warning',
-      message: interactive
-        ? 'Control has no accessible name. Add an accessibilityLabel or visible text.'
-        : 'Element is focusable by screen readers but has nothing to announce. Add an accessibilityLabel or remove accessible.',
-    });
+    issues.push(
+      kind === 'image' && !interactive
+        ? FOCUSABLE_IMAGE_MISSING_LABEL_ISSUE
+        : {
+            rule: 'missing-label',
+            severity: interactive ? 'error' : 'warning',
+            message: interactive
+              ? 'Control has no accessible name. Add an accessibilityLabel or visible text.'
+              : 'Element is focusable by screen readers but has nothing to announce. Add an accessibilityLabel or remove accessible.',
+          },
+    );
   }
 
-  if (interactive && (kind === 'view' || kind === 'text' || kind === 'image') && !role.role) {
-    issues.push(MISSING_ROLE_ISSUE);
+  const isActivatable = role.role != null && INTERACTIVE_ROLES.has(role.role);
+  if (interactive && (kind === 'view' || kind === 'text' || kind === 'image') && !isActivatable) {
+    issues.push(getMissingRoleIssue(role.role));
   }
 
   return { label, issues };
@@ -231,7 +263,8 @@ const getTouchSize = (node: HostNode, frame: Frame) => {
   const slop = asObject(hitSlop);
   const edge = (key: string) => {
     if (typeof hitSlop === 'number') return hitSlop;
-    return typeof slop[key] === 'number' ? (slop[key] as number) : 0;
+    const value = slop[key];
+    return typeof value === 'number' ? value : 0;
   };
   return {
     width: frame.width + edge('left') + edge('right'),
@@ -241,13 +274,17 @@ const getTouchSize = (node: HostNode, frame: Frame) => {
 
 export const getTouchTargetIssue = (
   node: HostNode,
+  kind: AccessibilityElementKind,
   frame: Frame | null,
-  minTouchTarget: number,
+  platform: Platform,
 ): AccessibilityIssue | null => {
-  // Links inside a paragraph are exempt from target-size rules (WCAG 2.5.8).
-  if (node.type === 'RCTVirtualText' || !frame || frame.width <= 0 || frame.height <= 0) {
+  // Links inside a paragraph are exempt from target-size rules (WCAG 2.5.8), and
+  // UISwitch has the fixed 51×31pt size of Apple's own control.
+  const isExempt = node.type === 'RCTVirtualText' || (kind === 'switch' && platform === 'ios');
+  if (isExempt || !frame || frame.width <= 0 || frame.height <= 0) {
     return null;
   }
+  const minTouchTarget = getMinTouchTarget(platform);
   const size = getTouchSize(node, frame);
   // Layout snaps to physical pixels, so a 48dp view can measure 47.9999.
   const isBelowMinimum = (value: number) => roundToTenth(value) < minTouchTarget;
