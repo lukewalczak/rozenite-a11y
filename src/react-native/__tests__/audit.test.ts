@@ -194,11 +194,22 @@ describe('auditHostTree', () => {
 
     it.each([
       ['aria-hidden', { 'aria-hidden': true }],
-      ['accessibilityElementsHidden', { accessibilityElementsHidden: true }],
-      ['importantForAccessibility', { importantForAccessibility: 'no-hide-descendants' }],
       ['display: none', { style: [{ flex: 1 }, { display: 'none' }] }],
     ])('skips a subtree hidden with %s', (_name, props) => {
       expect(audit([node('RCTView', props, [button()])])).toEqual([]);
+      expect(audit([node('RCTView', props, [button()])], 'android')).toEqual([]);
+    });
+
+    it('honours the hiding props only on the platform they work on', () => {
+      const iosOnly = node('RCTView', { accessibilityElementsHidden: true }, [button()]);
+      const androidOnly = node('RCTView', { importantForAccessibility: 'no-hide-descendants' }, [
+        button(),
+      ]);
+
+      expect(audit([iosOnly], 'ios')).toEqual([]);
+      expect(audit([iosOnly], 'android')).toHaveLength(1);
+      expect(audit([androidOnly], 'android')).toEqual([]);
+      expect(audit([androidOnly], 'ios')).toHaveLength(1);
     });
 
     it('audits only the top screen of a native stack', () => {
@@ -276,6 +287,95 @@ describe('auditHostTree', () => {
 
       expect(audit([slider({ 'aria-valuenow': 4 })])[0].value).toBe('4');
     });
+  });
+
+  describe('accessibility actions', () => {
+    const actions = [{ name: 'activate' }, { name: 'delete', label: 'Delete' }];
+
+    it('lists the actions and flags ones nothing handles', () => {
+      const [element] = audit([
+        pressable({ role: 'button', accessibilityLabel: 'Mail', accessibilityActions: actions }),
+      ]);
+
+      expect(element.actions).toEqual(['activate', 'delete']);
+      expect(element.issues).toEqual([
+        expect.objectContaining({ rule: 'unhandled-actions', severity: 'error' }),
+      ]);
+    });
+
+    it('flags a handler with no actions to call it', () => {
+      expect(
+        rules([
+          pressable({
+            role: 'button',
+            accessibilityLabel: 'Mail',
+            onAccessibilityAction: () => undefined,
+          }),
+        ]),
+      ).toEqual(['unhandled-actions']);
+    });
+
+    it('accepts actions with a handler', () => {
+      expect(
+        rules([
+          pressable({
+            role: 'button',
+            accessibilityLabel: 'Mail',
+            accessibilityActions: actions,
+            onAccessibilityAction: () => undefined,
+          }),
+        ]),
+      ).toEqual([]);
+    });
+
+    it('expects an adjustable element to handle increment and decrement', () => {
+      const slider = (names: string[]) =>
+        node('RCTView', {
+          accessible: true,
+          accessibilityRole: 'adjustable',
+          accessibilityLabel: 'Volume',
+          accessibilityValue: { now: 4 },
+          accessibilityActions: names.map((name) => ({ name })),
+          onAccessibilityAction: () => undefined,
+        });
+
+      expect(rules([slider(['activate'])])).toEqual(['unhandled-actions']);
+      expect(rules([slider(['increment', 'decrement'])])).toEqual([]);
+    });
+  });
+
+  describe('disabled state', () => {
+    it('flags a control that ignores touches but is announced as usable', () => {
+      expect(rules([pressable({ role: 'button', pointerEvents: 'none' }, [label('Pay')])])).toEqual(
+        ['missing-disabled-state'],
+      );
+      expect(
+        rules([pressable({ role: 'button', style: { pointerEvents: 'none' } }, [label('Pay')])]),
+      ).toEqual(['missing-disabled-state']);
+    });
+
+    it('accepts it when the control is marked disabled', () => {
+      expect(
+        rules([
+          pressable({ role: 'button', pointerEvents: 'none', 'aria-disabled': true }, [
+            label('Pay'),
+          ]),
+        ]),
+      ).toEqual([]);
+    });
+  });
+
+  it('reports a live region', () => {
+    const [status] = audit([
+      node('RCTText', { accessible: true, accessibilityLiveRegion: 'polite' }, [text('Saved')]),
+      node('RCTText', { accessible: true, 'aria-live': 'off' }, [text('Idle')]),
+    ]);
+
+    expect(status.liveRegion).toBe('polite');
+    expect(
+      audit([node('RCTText', { accessible: true, 'aria-live': 'off' }, [text('Idle')])])[0]
+        .liveRegion,
+    ).toBeNull();
   });
 
   describe('font scaling', () => {

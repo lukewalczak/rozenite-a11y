@@ -39,6 +39,8 @@ const RULE_TITLES: Record<AccessibilityRuleId, string> = {
   'missing-state': 'Missing state',
   'missing-value': 'Missing value',
   'font-scaling-disabled': 'Font scaling disabled',
+  'unhandled-actions': 'Accessibility actions',
+  'missing-disabled-state': 'Missing disabled state',
 };
 
 const getTone = (element: AccessibilityElement) => {
@@ -128,6 +130,10 @@ function ElementDetails({
         <DescriptionList.Item label="Role">{element.role ?? '—'}</DescriptionList.Item>
         <DescriptionList.Item label="Hint">{element.hint ?? '—'}</DescriptionList.Item>
         <DescriptionList.Item label="Value">{element.value ?? '—'}</DescriptionList.Item>
+        <DescriptionList.Item label="Actions">
+          {element.actions.length > 0 ? element.actions.join(', ') : '—'}
+        </DescriptionList.Item>
+        <DescriptionList.Item label="Live region">{element.liveRegion ?? '—'}</DescriptionList.Item>
         <DescriptionList.Item label="State">
           {element.states.length > 0 ? element.states.join(', ') : '—'}
         </DescriptionList.Item>

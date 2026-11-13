@@ -18,7 +18,9 @@ export type AccessibilityRuleId =
   | 'invalid-role'
   | 'missing-state'
   | 'missing-value'
-  | 'font-scaling-disabled';
+  | 'font-scaling-disabled'
+  | 'unhandled-actions'
+  | 'missing-disabled-state';
 
 export type AccessibilityIssue = {
   rule: AccessibilityRuleId;
@@ -45,6 +47,10 @@ export type AccessibilityElement = {
   /** Current value of an adjustable element, e.g. a slider. */
   value: string | null;
   states: string[];
+  /** Names of the custom `accessibilityActions`. */
+  actions: string[];
+  /** `polite` or `assertive` when changes are announced without focus. */
+  liveRegion: string | null;
   interactive: boolean;
   /**
    * Whether a screen reader can focus the element. `false` for elements listed

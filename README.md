@@ -11,6 +11,9 @@ It reads the mounted component tree and lists what a screen reader would stop on
 - **Missing roles**: pressable elements that are not announced as something to activate
 - **Invalid roles, state and values**: roles React Native ignores, checkboxes that do not say whether they are checked, sliders without a value
 - **Font scaling**: text that ignores the font size set in system settings
+- **Accessibility actions**: declared actions nothing handles, handlers with no actions, adjustable elements without increment and decrement
+- **Disabled state**: controls that ignore touches but are announced as usable
+- **Live regions**: which elements announce their changes on their own
 - **Touch targets**: controls smaller than 44×44 pt on iOS or 48×48 dp on Android, counting `hitSlop`
 - **Nested controls**: controls inside another accessible element, which VoiceOver cannot reach
 - **Outline in the app**: select an element in the panel to see where it is on the device
@@ -61,6 +64,15 @@ pnpm install
 pnpm test
 pnpm build
 ```
+
+`example/` is an Expo app with a screen that breaks every rule next to a correct version of it. Build the plugin, then start it:
+
+```bash
+pnpm build
+pnpm --filter rozenite-a11y-example start
+```
+
+It needs a development build with Expo SDK 58 native modules; Expo Go from the store may be older.
 
 `pnpm dev` starts the Rozenite dev host for working on the panel. To load the plugin from a local checkout in an app, start Metro with `ROZENITE_DEV_MODE=rozenite-a11y`.
 

@@ -165,12 +165,14 @@ const getVisibleChildren = (node: HostNode): HostNode[] => {
   return node.children.filter((child) => !isScreen(child) || child === top);
 };
 
-const isHidden = (node: HostNode): boolean => {
+// `aria-hidden` works on both platforms; the older props each work on one only.
+const isHidden = (node: HostNode, platform: string): boolean => {
   const { props } = node;
   if (
     props['aria-hidden'] === true ||
-    props.accessibilityElementsHidden === true ||
-    props.importantForAccessibility === 'no-hide-descendants'
+    (platform === 'ios'
+      ? props.accessibilityElementsHidden === true
+      : props.importantForAccessibility === 'no-hide-descendants')
   ) {
     return true;
   }
@@ -296,15 +298,78 @@ const getRoleIssues = (node: HostNode, kind: AccessibilityElementKind): Accessib
   return issues;
 };
 
+const getActions = (node: HostNode): string[] =>
+  Array.isArray(node.props.accessibilityActions)
+    ? node.props.accessibilityActions
+        .map((action) => asString(asObject(action).name))
+        .filter(Boolean)
+    : [];
+
+const getLiveRegion = (node: HostNode): string | null => {
+  const live = asString(node.props['aria-live']) || asString(node.props.accessibilityLiveRegion);
+  return live && live !== 'off' && live !== 'none' ? live : null;
+};
+
+const blocksTouches = (node: HostNode) => {
+  const pointerEvents = node.props.pointerEvents ?? flattenStyle(node.props.style).pointerEvents;
+  return pointerEvents === 'none' || pointerEvents === 'box-only';
+};
+
+/** Checks of custom actions and of a control that cannot be used but is not announced as such. */
+const getBehaviorIssues = (
+  node: HostNode,
+  role: string | null,
+  interactive: boolean,
+): AccessibilityIssue[] => {
+  const issues: AccessibilityIssue[] = [];
+  const actions = getActions(node);
+  const hasHandler = typeof node.props.onAccessibilityAction === 'function';
+
+  if (actions.length > 0 && !hasHandler) {
+    issues.push({
+      rule: 'unhandled-actions',
+      severity: 'error',
+      message: `Declares accessibilityActions (${actions.join(', ')}) but has no onAccessibilityAction, so choosing one does nothing.`,
+    });
+  } else if (actions.length === 0 && hasHandler) {
+    issues.push({
+      rule: 'unhandled-actions',
+      severity: 'warning',
+      message:
+        'Has onAccessibilityAction but declares no accessibilityActions, so a screen reader offers nothing to call it with.',
+    });
+  }
+
+  if (role === 'adjustable' && !(actions.includes('increment') && actions.includes('decrement'))) {
+    issues.push({
+      rule: 'unhandled-actions',
+      severity: 'warning',
+      message:
+        'An adjustable element is changed by swiping up and down, which needs the increment and decrement accessibilityActions.',
+    });
+  }
+
+  if (interactive && blocksTouches(node) && !getStates(node).includes('disabled')) {
+    issues.push({
+      rule: 'missing-disabled-state',
+      severity: 'warning',
+      message:
+        'Control ignores touches (pointerEvents) but is not marked disabled, so a screen reader announces it as usable. Set aria-disabled (or accessibilityState.disabled).',
+    });
+  }
+
+  return issues;
+};
+
 /** The text a screen reader assembles for an element that has no label of its own. */
-const collectText = (node: HostNode): string => {
+const collectText = (node: HostNode, platform: string): string => {
   const parts: string[] = [];
   const visit = (current: HostNode) => {
     if (current.type === TEXT_NODE_TYPE) {
       parts.push(current.text ?? '');
       return;
     }
-    if (isHidden(current)) {
+    if (isHidden(current, platform)) {
       return;
     }
     const label = getLabel(current);
@@ -391,6 +456,8 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
       hint: asString(node.props.accessibilityHint) || null,
       value,
       states,
+      actions: getActions(node),
+      liveRegion: getLiveRegion(node),
       // A role React Native ignores is not announced either.
       announcement: describe(
         { label: fields.label, role: hasValidRole(node) ? role : null, kind, states, value },
@@ -423,7 +490,7 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
   };
 
   const visit = (node: HostNode, insideAccessible: boolean) => {
-    if (node.type === TEXT_NODE_TYPE || isHidden(node)) {
+    if (node.type === TEXT_NODE_TYPE || isHidden(node, platform)) {
       return;
     }
 
@@ -445,7 +512,11 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
           node,
           kind,
           // VoiceOver folds it into the parent; TalkBack focuses it as a separate stop.
-          { label: ownLabel || collectText(node), interactive, focusable: platform !== 'ios' },
+          {
+            label: ownLabel || collectText(node, platform),
+            interactive,
+            focusable: platform !== 'ios',
+          },
           [
             {
               rule: 'nested-interactive',
@@ -463,7 +534,7 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
         addElement(
           node,
           kind,
-          { label: collectText(node), interactive, focusable: false },
+          { label: collectText(node, platform), interactive, focusable: false },
           [FONT_SCALING_ISSUE],
           node.measure(),
         );
@@ -483,7 +554,7 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
       props.importantForAccessibility !== 'no' && (props.accessible === true || isNativeStop);
 
     if (isStop) {
-      const content = ownLabel || collectText(node);
+      const content = ownLabel || collectText(node, platform);
       const issues: AccessibilityIssue[] = [];
       let label = content;
 
@@ -523,7 +594,7 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
         });
       }
 
-      issues.push(...getRoleIssues(node, kind));
+      issues.push(...getRoleIssues(node, kind), ...getBehaviorIssues(node, role, interactive));
       if (fontScalingDisabled) {
         issues.push(FONT_SCALING_ISSUE);
       }
@@ -552,7 +623,7 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
       addElement(
         node,
         kind,
-        { label: ownLabel || collectText(node), interactive, focusable: false },
+        { label: ownLabel || collectText(node, platform), interactive, focusable: false },
         issues,
         frame,
       );

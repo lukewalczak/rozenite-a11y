@@ -1,0 +1,23 @@
+{
+  "name": "rozenite-a11y-example",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "WITH_ROZENITE=true expo start",
+    "android": "WITH_ROZENITE=true expo start --android",
+    "ios": "WITH_ROZENITE=true expo start --ios"
+  },
+  "dependencies": {
+    "expo": "~58.0.25",
+    "expo-status-bar": "~58.0.5",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "rozenite-a11y": "workspace:*"
+  },
+  "devDependencies": {
+    "@rozenite/metro": "^2.5.0",
+    "@types/react": "~19.3.0",
+    "typescript": "~5.9.3"
+  }
+}
