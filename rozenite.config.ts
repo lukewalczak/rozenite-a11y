@@ -1,3 +1,5 @@
+import type { RozeniteConfig } from '@rozenite/vite-plugin';
+
 export default {
   integrations: ['react-native'],
   panels: [
@@ -6,4 +8,4 @@ export default {
       source: './src/ui/panel.tsx',
     },
   ],
-};
+} satisfies RozeniteConfig;
