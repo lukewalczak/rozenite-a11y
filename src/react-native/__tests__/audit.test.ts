@@ -494,6 +494,26 @@ describe('auditHostTree', () => {
     ]);
   });
 
+  it('names the prop that hides a control from screen readers', () => {
+    const message = (props: Record<string, unknown>) =>
+      audit([node('RCTView', { role: 'button', ...props }, [label('Save')])])[0].issues[0].message;
+
+    expect(message({ accessible: false })).toContain('accessible={false}');
+    expect(message({ importantForAccessibility: 'no' })).toContain(
+      'importantForAccessibility="no"',
+    );
+    expect(message({})).toContain('accessible={true} is missing');
+  });
+
+  it('reports font scaling on text that is not a screen reader stop', () => {
+    expect(
+      rules([node('RCTText', { accessible: false, allowFontScaling: false }, [text('Hi')])]),
+    ).toEqual(['font-scaling-disabled']);
+    expect(
+      rules([node('RCTSinglelineTextInputView', { accessible: false, allowFontScaling: false })]),
+    ).toEqual(['not-accessible', 'font-scaling-disabled']);
+  });
+
   it('treats plain text as readable on Android, where it is not reported as accessible', () => {
     const plain = node('RCTText', { accessible: false }, [text('Hello')]);
 
@@ -638,6 +658,21 @@ describe('auditHostTree', () => {
       ];
       expect(labels(tree(false))).toEqual(['Dialog']);
       expect(labels(tree(true))).toEqual(['Dialog', 'Price']);
+    });
+
+    it('ignores a Modal on a screen that is not displayed', () => {
+      const tree = [
+        node('RNSScreenContainer', {}, [
+          node('RNSScreen', { activityState: 2 }, [button('Home')]),
+          node('RNSScreen', { activityState: 0 }, [
+            node('RCTModalHostView', {}, [button('Hidden dialog')]),
+          ]),
+          node('RCTView', { style: { display: 'none' } }, [
+            node('RCTModalHostView', {}, [button('Collapsed dialog')]),
+          ]),
+        ]),
+      ];
+      expect(labels(tree)).toEqual(['Home']);
     });
   });
 

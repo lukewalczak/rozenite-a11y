@@ -176,6 +176,9 @@ const MODAL_HOST_TYPE = 'RCTModalHostView';
 const findTopModalHost = (nodes: HostNode[]): HostNode | undefined => {
   let top: HostNode | undefined;
   const find = (node: HostNode) => {
+    if (isNotDisplayed(node)) {
+      return;
+    }
     if (node.type === MODAL_HOST_TYPE) {
       top = node;
     }
@@ -675,13 +678,19 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
 
     if (interactive) {
       const frame = node.measure();
+      const reason =
+        props.importantForAccessibility === 'no'
+          ? 'importantForAccessibility="no"'
+          : props.accessible === false
+            ? 'accessible={false}'
+            : 'accessible={true} is missing';
       const issues: AccessibilityIssue[] = [
         {
           rule: 'not-accessible',
           severity: 'warning',
-          message:
-            'Control is hidden from screen readers (accessible={false}). Make sure the same action is reachable another way.',
+          message: `Control is hidden from screen readers (${reason}). Make sure the same action is reachable another way.`,
         },
+        ...(fontScalingDisabled ? [FONT_SCALING_ISSUE] : []),
       ];
       checkTouchTarget(node, frame, issues);
       addElement(
@@ -704,6 +713,14 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
               'Image is invisible to screen readers. Add alt text if it carries meaning, or accessible={false} if it is decorative.',
           },
         ],
+        node.measure(),
+      );
+    } else if (fontScalingDisabled) {
+      addElement(
+        node,
+        kind,
+        { label: collectText(node, platform), interactive, focusable: false },
+        [FONT_SCALING_ISSUE],
         node.measure(),
       );
     }
