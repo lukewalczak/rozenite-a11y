@@ -129,6 +129,7 @@ export const RozeniteAccessibility = (): ReactNode => {
     return () => {
       highlightRequestRef.current++;
       cancelMeasurements();
+      measureByIdRef.current = new Map();
       subscriptions.forEach((subscription) => subscription.remove());
       rpc.close();
       setHighlight(null);

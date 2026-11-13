@@ -50,6 +50,7 @@ Open the **Accessibility** panel in React Native DevTools and press **Run audit*
 
 - The component is **development-only**: in production (`NODE_ENV === 'production'`) it renders nothing and the audit code is left out of the bundle.
 - The audit is a static check of props and layout. It does not replace testing with VoiceOver or TalkBack, and it does not check colour contrast or focus order.
+- A control counts as ignoring touches when it or an ancestor sets `pointerEvents`. Other ways of disabling it, such as `editable={false}` on a text input, are not checked.
 - The reading order follows the component tree, which is an approximation of the order the platform uses.
 - Native views that are not React components (maps, web views, native navigation bars) are not part of the audit.
 - The tree is read through the React DevTools hook, which exists in development builds only.

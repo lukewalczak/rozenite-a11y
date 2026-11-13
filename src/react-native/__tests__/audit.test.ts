@@ -420,8 +420,13 @@ describe('auditHostTree', () => {
 
     expect(audit([live], 'android')[0].liveRegion).toBe('polite');
     expect(audit([live], 'ios')[0].liveRegion).toBeNull();
-    const off = node('RCTText', { accessible: true, 'aria-live': 'off' }, [text('Idle')]);
+    const off = node('RCTText', { accessible: true, accessibilityLiveRegion: 'none' }, [
+      text('Idle'),
+    ]);
     expect(audit([off], 'android')[0].liveRegion).toBeNull();
+    // Text passes aria-live on without turning it into a live region.
+    const aria = node('RCTText', { accessible: true, 'aria-live': 'polite' }, [text('Saved')]);
+    expect(audit([aria], 'android')[0].liveRegion).toBeNull();
   });
 
   describe('font scaling', () => {
@@ -584,5 +589,73 @@ describe('auditHostTree', () => {
         ]),
       ).toEqual([]);
     });
+  });
+
+  describe('modals', () => {
+    const button = (name: string) => pressable({ role: 'button' }, [label(name)]);
+    const labels = (roots: HostNode[], platform: Platform = 'ios') =>
+      audit(roots, platform).map((element) => element.label);
+
+    it('hides the siblings of an aria-modal view on iOS only', () => {
+      const tree = [
+        node('RCTView', {}, [
+          button('Behind'),
+          node('RCTView', { 'aria-modal': true }, [button('Dialog')]),
+        ]),
+      ];
+      expect(labels(tree, 'ios')).toEqual(['Dialog']);
+      expect(labels(tree, 'android')).toEqual(['Behind', 'Dialog']);
+    });
+
+    it('still checks font scaling of text behind an aria-modal view', () => {
+      const tree = [
+        node('RCTView', {}, [
+          node('RCTText', { allowFontScaling: false }, [text('Price')]),
+          node('RCTView', { 'aria-modal': true }, [button('Dialog')]),
+        ]),
+      ];
+      expect(audit(tree).map((element) => [element.label, element.focusable])).toEqual([
+        ['Price', false],
+        ['Dialog', true],
+      ]);
+    });
+
+    it('audits only an open Modal and what shows through a transparent one', () => {
+      const tree = (transparent: boolean) => [
+        node('RCTView', {}, [
+          button('Behind'),
+          node('RCTText', { allowFontScaling: false }, [text('Price')]),
+          node('RCTModalHostView', { transparent }, [button('Dialog')]),
+        ]),
+      ];
+      expect(labels(tree(false))).toEqual(['Dialog']);
+      expect(labels(tree(true))).toEqual(['Dialog', 'Price']);
+    });
+  });
+
+  it('checks the role of a nested control', () => {
+    const [, nested] = audit([
+      pressable({ role: 'button' }, [
+        label('Settings'),
+        pressable({ role: 'checkbox' }, [label('Wi-Fi')]),
+      ]),
+    ]);
+    expect(nested.issues.map((issue) => issue.rule)).toEqual([
+      'nested-interactive',
+      'missing-state',
+    ]);
+  });
+
+  it('does not report font scaling on screens a stack covers', () => {
+    const screen = (activityState: number, name: string) =>
+      node('RNSScreen', { activityState }, [
+        node('RCTText', { allowFontScaling: false }, [text(name)]),
+      ]);
+    const tree = [
+      node('RCTView', { 'aria-hidden': true }, [
+        node('RNSScreenStack', {}, [screen(2, 'Covered'), screen(2, 'Top')]),
+      ]),
+    ];
+    expect(audit(tree).map((element) => element.label)).toEqual(['Top']);
   });
 });

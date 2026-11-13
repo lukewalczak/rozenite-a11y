@@ -186,8 +186,10 @@ export default function App() {
           <Pressable role="button" style={styles.button} onPress={() => setSaved(saved + 1)}>
             <Text style={styles.buttonText}>Save</Text>
           </Pressable>
-          {/* Announced by TalkBack only; VoiceOver ignores aria-live. */}
-          <Text aria-live="polite">{saved > 0 ? `Saved ${saved} times` : 'Not saved yet'}</Text>
+          {/* TalkBack only. Text ignores aria-live, so it needs accessibilityLiveRegion. */}
+          <Text accessibilityLiveRegion="polite">
+            {saved > 0 ? `Saved ${saved} times` : 'Not saved yet'}
+          </Text>
           <Text>{saved > 0 ? `Saved ${saved} times` : 'Not saved yet'} (no live region)</Text>
           <View aria-hidden>
             <Text>Hidden on both platforms</Text>

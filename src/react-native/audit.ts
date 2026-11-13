@@ -140,18 +140,19 @@ const getKind = (type: string): AccessibilityElementKind => {
 
 const isScreen = (node: HostNode) => /^RNS(Modal|Stack)?Screen$/.test(node.type);
 
-/** The children a screen reader can reach: the top screen of a native stack, or a modal alone. */
-const getVisibleChildren = (node: HostNode): HostNode[] => {
-  // A modal view hides its siblings from screen readers.
-  const modal = [...node.children]
-    .reverse()
-    .find(
-      (child) =>
-        child.props.accessibilityViewIsModal === true || child.props['aria-modal'] === true,
-    );
-  if (modal) {
-    return [modal];
-  }
+// On iOS a modal view hides its siblings from VoiceOver. Android has no equivalent.
+const getModalChild = (node: HostNode, platform: Platform): HostNode | undefined =>
+  platform === 'ios'
+    ? [...node.children]
+        .reverse()
+        .find(
+          (child) =>
+            child.props.accessibilityViewIsModal === true || child.props['aria-modal'] === true,
+        )
+    : undefined;
+
+/** The children on screen: all of them, except the screens a native stack covers. */
+const getShownChildren = (node: HostNode): HostNode[] => {
   if (node.type !== 'RNSScreenStack') {
     return node.children;
   }
@@ -161,6 +162,27 @@ const getVisibleChildren = (node: HostNode): HostNode[] => {
   }
   const top = screens[screens.length - 1];
   return node.children.filter((child) => !isScreen(child) || child === top);
+};
+
+/** The children a screen reader can reach. */
+const getVisibleChildren = (node: HostNode, platform: Platform): HostNode[] => {
+  const modal = getModalChild(node, platform);
+  return modal ? [modal] : getShownChildren(node);
+};
+
+const MODAL_HOST_TYPE = 'RCTModalHostView';
+
+/** The open React Native `<Modal>` drawn on top of everything else, if any. */
+const findTopModalHost = (nodes: HostNode[]): HostNode | undefined => {
+  let top: HostNode | undefined;
+  const find = (node: HostNode) => {
+    if (node.type === MODAL_HOST_TYPE) {
+      top = node;
+    }
+    getShownChildren(node).forEach(find);
+  };
+  nodes.forEach(find);
+  return top;
 };
 
 const isNotDisplayed = (node: HostNode): boolean =>
@@ -301,13 +323,14 @@ const getActions = (node: HostNode): string[] =>
         .filter(Boolean)
     : [];
 
-// Live regions are an Android feature; VoiceOver does not announce them.
+// Live regions are an Android feature; VoiceOver does not announce them. View and
+// Pressable turn `aria-live` into `accessibilityLiveRegion`; Text passes it on unused.
 const getLiveRegion = (node: HostNode, platform: Platform): string | null => {
-  if (platform === 'ios') {
+  if (platform !== 'android') {
     return null;
   }
-  const live = asString(node.props['aria-live']) || asString(node.props.accessibilityLiveRegion);
-  return live && live !== 'off' && live !== 'none' ? live : null;
+  const live = asString(node.props.accessibilityLiveRegion);
+  return live && live !== 'none' ? live : null;
 };
 
 const getPointerEvents = (node: HostNode) =>
@@ -382,9 +405,9 @@ const collectText = (node: HostNode, platform: Platform): string => {
       parts.push(label);
       return;
     }
-    getVisibleChildren(current).forEach(visit);
+    getVisibleChildren(current, platform).forEach(visit);
   };
-  getVisibleChildren(node).forEach(visit);
+  getVisibleChildren(node, platform).forEach(visit);
   return asString(parts.join(' '));
 };
 
@@ -487,9 +510,11 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
     }
   };
 
+  const modalHost = findTopModalHost(roots);
+
   // Text hidden from screen readers is still on screen, so it still has to scale.
   const visitHidden = (node: HostNode) => {
-    if (node.type === TEXT_NODE_TYPE || isNotDisplayed(node)) {
+    if (node.type === TEXT_NODE_TYPE || node === modalHost || isNotDisplayed(node)) {
       return;
     }
     const kind = getKind(node.type);
@@ -502,7 +527,7 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
         node.measure(),
       );
     }
-    node.children.forEach(visitHidden);
+    getShownChildren(node).forEach(visitHidden);
   };
 
   const visit = (node: HostNode, insideAccessible: boolean, ancestorBlocksTouches: boolean) => {
@@ -527,8 +552,11 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
     const touchesBlocked = ancestorBlocksTouches || pointerEvents === 'none';
     const childrenBlockTouches =
       ancestorBlocksTouches || pointerEvents === 'none' || pointerEvents === 'box-only';
+    const modal = getModalChild(node, platform);
     const visitChildren = (inside: boolean) =>
-      getVisibleChildren(node).forEach((child) => visit(child, inside, childrenBlockTouches));
+      getShownChildren(node).forEach((child) =>
+        modal && child !== modal ? visitHidden(child) : visit(child, inside, childrenBlockTouches),
+      );
 
     if (insideAccessible) {
       // The parent is one accessibility element; its descendants are folded into it.
@@ -543,6 +571,7 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
                 ? 'Control is nested inside another accessible element, so VoiceOver cannot focus it on its own. Set accessible={false} on the parent or move the control out of it.'
                 : 'Control is nested inside another accessible element. TalkBack focuses it separately, without the text around it, and VoiceOver cannot focus it at all. Give it its own label, or move it out of the parent.',
           },
+          ...getRoleIssues(node, kind),
           ...getBehaviorIssues(node, kind, role, interactive, touchesBlocked),
           ...(fontScalingDisabled ? [FONT_SCALING_ISSUE] : []),
         ];
@@ -680,7 +709,16 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
     visitChildren(false);
   };
 
-  roots.forEach((root) => visit(root, false, false));
+  if (modalHost) {
+    // A screen reader stays inside an open modal. What is behind it is only on
+    // screen when the modal is transparent.
+    visit(modalHost, false, false);
+    if (modalHost.props.transparent === true) {
+      roots.forEach(visitHidden);
+    }
+  } else {
+    roots.forEach((root) => visit(root, false, false));
+  }
 
   return { elements, minTouchTarget, measureById };
 };
