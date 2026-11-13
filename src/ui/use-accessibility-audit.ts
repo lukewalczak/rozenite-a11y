@@ -21,7 +21,6 @@ const describeError = (error: unknown): string => {
   return error instanceof Error ? error.message : String(error);
 };
 
-/** Owns the RPC client and the most recent audit. */
 export const useAccessibilityAudit = () => {
   const client = useRozeniteDevToolsClient({
     pluginId: ACCESSIBILITY_PLUGIN_ID,

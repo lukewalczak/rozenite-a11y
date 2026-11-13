@@ -429,6 +429,22 @@ describe('auditHostTree', () => {
     expect(audit([aria], 'android')[0].liveRegion).toBeNull();
   });
 
+  it('lists a live region container a screen reader does not stop on', () => {
+    const tree = [
+      node('RCTView', { accessibilityLiveRegion: 'assertive' }, [
+        node('RCTText', {}, [text('Error')]),
+      ]),
+    ];
+    const summary = (platform: Platform) =>
+      audit(tree, platform).map((item) => [item.label, item.liveRegion, item.focusable]);
+
+    expect(summary('android')).toEqual([
+      ['Error', 'assertive', false],
+      ['Error', null, true],
+    ]);
+    expect(summary('ios')).toEqual([['Error', null, true]]);
+  });
+
   describe('font scaling', () => {
     it('flags text that ignores the system font size', () => {
       expect(rules([node('RCTText', { allowFontScaling: false }, [text('Total')])])).toEqual([
@@ -559,6 +575,14 @@ describe('auditHostTree', () => {
           }),
         ]),
       ).toEqual([]);
+    });
+
+    it('leaves native sliders to announce their own value', () => {
+      const slider = (type: string) =>
+        node(type, { accessible: true, role: 'slider', accessibilityLabel: 'Volume' });
+
+      expect(rules([slider('RNCSlider')])).toEqual([]);
+      expect(rules([slider('RCTView')])).toContain('missing-value');
     });
 
     it('ignores pixel rounding in touch target sizes', () => {

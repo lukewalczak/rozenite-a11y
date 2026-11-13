@@ -1,6 +1,6 @@
 import type { AccessibilityElement } from '../shared/types';
 
-export type ElementFilter = 'all' | 'issues';
+export type ElementFilter = 'all' | 'issues' | 'live';
 
 export const countIssues = (elements: AccessibilityElement[]) => {
   let errors = 0;
@@ -23,6 +23,9 @@ export const filterElements = (
 
   return elements.filter((element) => {
     if (filter === 'issues' && element.issues.length === 0) {
+      return false;
+    }
+    if (filter === 'live' && !element.liveRegion) {
       return false;
     }
     if (!term) {

@@ -6,6 +6,7 @@ export type {
   AccessibilitySeverity,
   AccessibilitySystemState,
   Frame,
+  LiveRegion,
 } from './src/shared/types';
 
 export let RozeniteAccessibility: typeof import('./src/react-native/RozeniteAccessibility').RozeniteAccessibility;

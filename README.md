@@ -6,17 +6,18 @@ It reads the mounted component tree and lists what a screen reader would stop on
 
 ## Features
 
-- **Reading order**: every element a screen reader can focus on the current screen, with its announcement (label, role and state)
+- **Reading order**: every element a screen reader can focus on the current screen, with its announcement (label, role and state). Elements listed only for an issue or a live region are marked as not focusable
 - **Missing labels**: controls, images and text inputs a screen reader cannot name
 - **Missing roles**: pressable elements that are not announced as something to activate
 - **Invalid roles, state and values**: roles React Native ignores, checkboxes that do not say whether they are checked, sliders without a value
 - **Font scaling**: text that ignores the font size set in system settings
 - **Accessibility actions**: declared actions nothing handles, handlers with no actions, adjustable elements without increment and decrement
 - **Disabled state**: controls that ignore touches but are announced as usable
-- **Live regions**: which elements announce their changes on their own (Android only; VoiceOver ignores `aria-live`)
+- **Live regions**: which elements announce their changes on their own, including containers a screen reader does not stop on (Android only; VoiceOver ignores `aria-live`)
 - **Touch targets**: controls smaller than 44×44 pt on iOS or 48×48 dp on Android, counting `hitSlop`
 - **Nested controls**: controls inside another accessible element, which VoiceOver cannot reach
-- **Hidden controls**: controls hidden from screen readers with `accessible={false}`
+- **Hidden controls**: controls a screen reader cannot reach, because of `accessible={false}`, `importantForAccessibility="no"` or a missing `accessible`
+- **Filter and search**: show all elements, only those with issues or only live regions, and search by announcement, component or rule
 - **Outline in the app**: select an element in the panel to see where it is on the device
 - **Component names**: each element names the component that rendered it
 - **System settings**: screen reader, font scale, reduce motion and other accessibility settings of the device
@@ -44,7 +45,7 @@ function App() {
 }
 ```
 
-Open the **Accessibility** panel in React Native DevTools and press **Run audit**. The audit covers the screen that is visible at that moment; run it again after navigating.
+Open the **Accessibility** panel in React Native DevTools. It audits the screen that is visible when it connects; press **Run audit** to audit again after navigating.
 
 ## Notes
 

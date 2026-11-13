@@ -32,6 +32,8 @@ export type AccessibilityIssue = {
   message: string;
 };
 
+export type LiveRegion = 'polite' | 'assertive';
+
 export type AccessibilityElementKind = 'view' | 'text' | 'image' | 'input' | 'switch';
 
 export type AccessibilityElement = {
@@ -53,12 +55,13 @@ export type AccessibilityElement = {
   states: string[];
   /** Names of the custom `accessibilityActions`. */
   actions: string[];
-  /** `polite` or `assertive` when changes are announced without focus. */
-  liveRegion: string | null;
+  /** Set when changes are announced without focus. */
+  liveRegion: LiveRegion | null;
   interactive: boolean;
   /**
    * Whether a screen reader can focus the element. `false` for elements listed
-   * only because they have an issue, such as a control nested in another one.
+   * only because they have an issue or are a live region, such as a control
+   * nested in another one.
    */
   focusable: boolean;
   /** Approximation of what a screen reader says when the element is focused. */

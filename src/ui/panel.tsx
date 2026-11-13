@@ -71,6 +71,11 @@ function ElementRow({
           {element.component && (
             <span className="font-mono text-xs text-faint">{element.component}</span>
           )}
+          {element.liveRegion && (
+            <Badge tone="info" variant="soft" size="sm">
+              live
+            </Badge>
+          )}
           {element.issues.length > 0 && (
             <Badge tone={getTone(element)} variant="soft" size="sm">
               {element.issues.length}
@@ -79,7 +84,10 @@ function ElementRow({
         </span>
       }
     >
-      {element.announcement || <span className="text-faint">Nothing to announce</span>}
+      <span className={element.focusable ? undefined : 'text-muted-foreground'}>
+        {element.announcement || <span className="text-faint">Nothing to announce</span>}
+      </span>
+      {!element.focusable && <span className="text-faint"> · not focusable</span>}
     </List.Item>
   );
 }
@@ -238,7 +246,12 @@ function AccessibilityPanelContent() {
     () => filterElements(elements, filter, search),
     [elements, filter, search],
   );
+  const liveCount = useMemo(
+    () => elements.filter((element) => element.liveRegion).length,
+    [elements],
+  );
   const selectedElement = elements.find((element) => element.id === selectedId) ?? null;
+  const showsIssuesOnly = filter === 'issues' && !search;
 
   return (
     <PluginShell.Body>
@@ -256,7 +269,7 @@ function AccessibilityPanelContent() {
             value={[filter]}
             onValueChange={(next) => {
               const value = next[0];
-              if (value === 'all' || value === 'issues') setFilter(value);
+              if (value === 'all' || value === 'issues' || value === 'live') setFilter(value);
             }}
           >
             <ToggleGroup.Item size="sm" value="all">
@@ -264,6 +277,9 @@ function AccessibilityPanelContent() {
             </ToggleGroup.Item>
             <ToggleGroup.Item size="sm" value="issues">
               Issues {counts.errors + counts.warnings}
+            </ToggleGroup.Item>
+            <ToggleGroup.Item size="sm" value="live">
+              Live {liveCount}
             </ToggleGroup.Item>
           </ToggleGroup>
           <div className="min-w-40 flex-1">
@@ -311,12 +327,10 @@ function AccessibilityPanelContent() {
                 <div className="h-full overflow-auto">
                   {visibleElements.length === 0 ? (
                     <EmptyState
-                      icon={filter === 'issues' && !search ? CheckCircle2 : AlertTriangle}
-                      title={
-                        filter === 'issues' && !search ? 'No issues found' : 'No matching elements'
-                      }
+                      icon={showsIssuesOnly ? CheckCircle2 : AlertTriangle}
+                      title={showsIssuesOnly ? 'No issues found' : 'No matching elements'}
                       description={
-                        filter === 'issues' && !search
+                        showsIssuesOnly
                           ? 'Nothing on this screen broke a rule. Rules cover labels, roles, state and values, font scaling, actions, disabled state, touch targets and nesting, not contrast or focus order.'
                           : 'Try a different search or filter.'
                       }
