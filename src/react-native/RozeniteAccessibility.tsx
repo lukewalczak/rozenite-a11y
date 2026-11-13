@@ -63,6 +63,7 @@ export const RozeniteAccessibility = (): ReactNode => {
   const [highlight, setHighlight] = useState<Frame | null>(null);
   const containerRef = useRef<ComponentRef<typeof View>>(null);
   const measureByIdRef = useRef(new Map<string, () => Frame | null>());
+  const highlightRequestRef = useRef(0);
 
   useEffect(() => {
     if (!client) {
@@ -95,6 +96,7 @@ export const RozeniteAccessibility = (): ReactNode => {
         };
       }),
       rpc.handle('highlight', async ({ id }) => {
+        const request = ++highlightRequestRef.current;
         const frame = id == null ? null : (measureByIdRef.current.get(id)?.() ?? null);
         if (!frame) {
           setHighlight(null);
@@ -104,18 +106,23 @@ export const RozeniteAccessibility = (): ReactNode => {
         // Frames are in window coordinates; the outline is positioned inside
         // this component's container, which may not start at the window origin.
         const container = containerRef.current;
-        if (container) {
-          container.measureInWindow((x, y) => {
-            setHighlight({ ...frame, x: frame.x - (x || 0), y: frame.y - (y || 0) });
-          });
-        } else {
-          setHighlight(frame);
+        const origin = container
+          ? await new Promise<{ x: number; y: number }>((resolve) =>
+              container.measureInWindow((x, y) => resolve({ x: x || 0, y: y || 0 })),
+            )
+          : { x: 0, y: 0 };
+
+        // A newer request or the cleanup below has taken over in the meantime.
+        if (request !== highlightRequestRef.current) {
+          return { highlighted: false };
         }
+        setHighlight({ ...frame, x: frame.x - origin.x, y: frame.y - origin.y });
         return { highlighted: true };
       }),
     ];
 
     return () => {
+      highlightRequestRef.current++;
       subscriptions.forEach((subscription) => subscription.remove());
       rpc.close();
       setHighlight(null);

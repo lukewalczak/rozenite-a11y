@@ -55,7 +55,7 @@ Open the **Accessibility** panel in React Native DevTools and press **Run audit*
 
 ## Requirements
 
-An app with [Rozenite set up](https://www.rozenite.dev/docs/getting-started), version 2.5 or newer.
+An app with [Rozenite set up](https://www.rozenite.dev/docs/getting-started), version 2.5 or newer, running on the [New Architecture](https://reactnative.dev/architecture/landing-page). On the old architecture elements cannot be measured, so touch targets are not checked and nothing is outlined.
 
 ## Development
 

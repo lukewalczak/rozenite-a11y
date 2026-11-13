@@ -273,6 +273,8 @@ describe('auditHostTree', () => {
           accessible: true,
           role: 'slider',
           accessibilityLabel: 'Volume',
+          accessibilityActions: [{ name: 'increment' }, { name: 'decrement' }],
+          onAccessibilityAction: () => undefined,
           ...props,
         });
 
@@ -342,6 +344,35 @@ describe('auditHostTree', () => {
       expect(rules([slider(['activate'])])).toEqual(['unhandled-actions']);
       expect(rules([slider(['increment', 'decrement'])])).toEqual([]);
     });
+
+    it('treats role="slider" as adjustable', () => {
+      expect(
+        rules([
+          node('RCTView', {
+            accessible: true,
+            role: 'slider',
+            accessibilityLabel: 'Volume',
+            'aria-valuenow': 4,
+          }),
+        ]),
+      ).toEqual(['unhandled-actions']);
+    });
+
+    it('reports both an unhandled action and missing increment on one element', () => {
+      const [element] = audit([
+        node('RCTView', {
+          accessible: true,
+          accessibilityRole: 'adjustable',
+          accessibilityLabel: 'Volume',
+          accessibilityValue: { now: 4 },
+          onAccessibilityAction: () => undefined,
+        }),
+      ]);
+      expect(element.issues.map((issue) => issue.rule)).toEqual([
+        'unhandled-actions',
+        'unhandled-actions',
+      ]);
+    });
   });
 
   describe('disabled state', () => {
@@ -352,6 +383,21 @@ describe('auditHostTree', () => {
       expect(
         rules([pressable({ role: 'button', style: { pointerEvents: 'none' } }, [label('Pay')])]),
       ).toEqual(['missing-disabled-state']);
+    });
+
+    it('follows pointerEvents of ancestors and the meaning of box-none and box-only', () => {
+      const button = (props: Record<string, unknown> = {}) =>
+        pressable({ role: 'button', ...props }, [label('Pay')]);
+
+      expect(rules([node('RCTView', { pointerEvents: 'none' }, [button()])])).toEqual([
+        'missing-disabled-state',
+      ]);
+      expect(rules([node('RCTView', { pointerEvents: 'box-only' }, [button()])])).toEqual([
+        'missing-disabled-state',
+      ]);
+      expect(rules([node('RCTView', { pointerEvents: 'box-none' }, [button()])])).toEqual([]);
+      expect(rules([button({ pointerEvents: 'box-only' })])).toEqual([]);
+      expect(rules([button({ pointerEvents: 'box-none' })])).toEqual(['missing-disabled-state']);
     });
 
     it('accepts it when the control is marked disabled', () => {
@@ -365,17 +411,15 @@ describe('auditHostTree', () => {
     });
   });
 
-  it('reports a live region', () => {
-    const [status] = audit([
-      node('RCTText', { accessible: true, accessibilityLiveRegion: 'polite' }, [text('Saved')]),
-      node('RCTText', { accessible: true, 'aria-live': 'off' }, [text('Idle')]),
+  it('reports a live region on Android only', () => {
+    const live = node('RCTText', { accessible: true, accessibilityLiveRegion: 'polite' }, [
+      text('Saved'),
     ]);
 
-    expect(status.liveRegion).toBe('polite');
-    expect(
-      audit([node('RCTText', { accessible: true, 'aria-live': 'off' }, [text('Idle')])])[0]
-        .liveRegion,
-    ).toBeNull();
+    expect(audit([live], 'android')[0].liveRegion).toBe('polite');
+    expect(audit([live], 'ios')[0].liveRegion).toBeNull();
+    const off = node('RCTText', { accessible: true, 'aria-live': 'off' }, [text('Idle')]);
+    expect(audit([off], 'android')[0].liveRegion).toBeNull();
   });
 
   describe('font scaling', () => {

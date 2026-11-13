@@ -117,8 +117,11 @@ function ElementDetails({
           <Alert.Description>No issues found for this element.</Alert.Description>
         </Alert>
       ) : (
-        element.issues.map((issue) => (
-          <Alert key={issue.rule} tone={issue.severity === 'error' ? 'danger' : 'warning'}>
+        element.issues.map((issue, index) => (
+          <Alert
+            key={`${issue.rule}-${index}`}
+            tone={issue.severity === 'error' ? 'danger' : 'warning'}
+          >
             <Alert.Title>{RULE_TITLES[issue.rule]}</Alert.Title>
             <Alert.Description>{issue.message}</Alert.Description>
           </Alert>

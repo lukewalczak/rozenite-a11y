@@ -305,21 +305,24 @@ const getActions = (node: HostNode): string[] =>
         .filter(Boolean)
     : [];
 
-const getLiveRegion = (node: HostNode): string | null => {
+// Live regions are an Android feature; VoiceOver does not announce them.
+const getLiveRegion = (node: HostNode, platform: string): string | null => {
+  if (platform === 'ios') {
+    return null;
+  }
   const live = asString(node.props['aria-live']) || asString(node.props.accessibilityLiveRegion);
   return live && live !== 'off' && live !== 'none' ? live : null;
 };
 
-const blocksTouches = (node: HostNode) => {
-  const pointerEvents = node.props.pointerEvents ?? flattenStyle(node.props.style).pointerEvents;
-  return pointerEvents === 'none' || pointerEvents === 'box-only';
-};
+const getPointerEvents = (node: HostNode) =>
+  node.props.pointerEvents ?? flattenStyle(node.props.style).pointerEvents;
 
 /** Checks of custom actions and of a control that cannot be used but is not announced as such. */
 const getBehaviorIssues = (
   node: HostNode,
   role: string | null,
   interactive: boolean,
+  touchesBlocked: boolean,
 ): AccessibilityIssue[] => {
   const issues: AccessibilityIssue[] = [];
   const actions = getActions(node);
@@ -340,7 +343,10 @@ const getBehaviorIssues = (
     });
   }
 
-  if (role === 'adjustable' && !(actions.includes('increment') && actions.includes('decrement'))) {
+  if (
+    (role === 'adjustable' || role === 'slider') &&
+    !(actions.includes('increment') && actions.includes('decrement'))
+  ) {
     issues.push({
       rule: 'unhandled-actions',
       severity: 'warning',
@@ -349,7 +355,7 @@ const getBehaviorIssues = (
     });
   }
 
-  if (interactive && blocksTouches(node) && !getStates(node).includes('disabled')) {
+  if (interactive && touchesBlocked && !getStates(node).includes('disabled')) {
     issues.push({
       rule: 'missing-disabled-state',
       severity: 'warning',
@@ -457,7 +463,7 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
       value,
       states,
       actions: getActions(node),
-      liveRegion: getLiveRegion(node),
+      liveRegion: getLiveRegion(node, platform),
       // A role React Native ignores is not announced either.
       announcement: describe(
         { label: fields.label, role: hasValidRole(node) ? role : null, kind, states, value },
@@ -489,7 +495,7 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
     }
   };
 
-  const visit = (node: HostNode, insideAccessible: boolean) => {
+  const visit = (node: HostNode, insideAccessible: boolean, ancestorBlocksTouches: boolean) => {
     if (node.type === TEXT_NODE_TYPE || isHidden(node, platform)) {
       return;
     }
@@ -501,8 +507,14 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
     const ownLabel = getLabel(node);
     const optedOut = props.accessible === false || props.importantForAccessibility === 'no';
     const fontScalingDisabled = isFontScalingDisabled(node, kind);
+    // `box-none` stops touches on the view itself, `box-only` on its descendants.
+    const pointerEvents = getPointerEvents(node);
+    const touchesBlocked =
+      ancestorBlocksTouches || pointerEvents === 'none' || pointerEvents === 'box-none';
+    const childrenBlockTouches =
+      ancestorBlocksTouches || pointerEvents === 'none' || pointerEvents === 'box-only';
     const visitChildren = (inside: boolean) =>
-      getVisibleChildren(node).forEach((child) => visit(child, inside));
+      getVisibleChildren(node).forEach((child) => visit(child, inside, childrenBlockTouches));
 
     if (insideAccessible) {
       // The parent is one accessibility element; its descendants are folded into it.
@@ -594,7 +606,10 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
         });
       }
 
-      issues.push(...getRoleIssues(node, kind), ...getBehaviorIssues(node, role, interactive));
+      issues.push(
+        ...getRoleIssues(node, kind),
+        ...getBehaviorIssues(node, role, interactive, touchesBlocked),
+      );
       if (fontScalingDisabled) {
         issues.push(FONT_SCALING_ISSUE);
       }
@@ -647,7 +662,7 @@ export const auditHostTree = (roots: HostNode[], { platform }: AuditOptions): Au
     visitChildren(false);
   };
 
-  roots.forEach((root) => visit(root, false));
+  roots.forEach((root) => visit(root, false, false));
 
   return { elements, minTouchTarget, measureById };
 };
