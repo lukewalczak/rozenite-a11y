@@ -11,10 +11,10 @@ importers:
       '@rozenite/plugin-bridge':
         specifier: ^2.5.0
         version: 2.5.0(react@19.1.0)
+    devDependencies:
       '@rozenite/ui':
         specifier: ^2.5.0
         version: 2.5.0(@types/react@19.1.17)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-    devDependencies:
       '@rozenite/vite-plugin':
         specifier: ^2.5.0
         version: 2.6.0(@types/react@19.1.17)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(supports-color@8.1.1)(vite@7.3.8(@types/node@22.20.5)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(yaml@2.9.1))

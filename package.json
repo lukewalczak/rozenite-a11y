@@ -38,13 +38,14 @@
     "build": "rozenite build",
     "dev": "rozenite dev",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest --run"
+    "test": "vitest --run",
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
-    "@rozenite/plugin-bridge": "^2.5.0",
-    "@rozenite/ui": "^2.5.0"
+    "@rozenite/plugin-bridge": "^2.5.0"
   },
   "devDependencies": {
+    "@rozenite/ui": "^2.5.0",
     "@rozenite/vite-plugin": "^2.5.0",
     "@types/node": "^22.20.5",
     "@types/react": "~19.1.10",
