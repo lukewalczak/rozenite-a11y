@@ -34,17 +34,23 @@
     },
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "rozenite build",
     "dev": "rozenite dev",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest --run",
-    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build"
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build",
+    "changeset": "changeset"
   },
   "dependencies": {
     "@rozenite/plugin-bridge": "^2.5.0"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.3",
     "@rozenite/ui": "^2.5.0",
     "@rozenite/vite-plugin": "^2.5.0",
     "@types/node": "^22.20.5",
@@ -61,5 +67,6 @@
   "peerDependencies": {
     "react": "*",
     "react-native": "*"
-  }
+  },
+  "packageManager": "pnpm@12.4.1"
 }
