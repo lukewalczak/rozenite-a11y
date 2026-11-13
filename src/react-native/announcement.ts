@@ -1,0 +1,46 @@
+import type { AccessibilityElement, AccessibilityElementKind, Platform } from '../shared/types';
+
+const SPOKEN_ROLES: Record<string, string> = {
+  adjustable: 'adjustable',
+  header: 'heading',
+  heading: 'heading',
+  imagebutton: 'button',
+  img: 'image',
+  none: '',
+  presentation: '',
+  search: 'search field',
+  searchbox: 'search field',
+  text: '',
+  togglebutton: 'toggle button',
+};
+
+const SPOKEN_KINDS: Partial<Record<AccessibilityElementKind, string>> = {
+  image: 'image',
+  input: 'text field',
+  switch: 'switch',
+};
+
+// TalkBack's names for the roles it words differently from VoiceOver.
+const ANDROID_SPOKEN_ROLES: Record<string, string> = {
+  checkbox: 'check box',
+  radio: 'radio button',
+};
+
+/** Approximation of what a screen reader says when the element is focused. */
+export const getAnnouncement = (
+  element: Pick<AccessibilityElement, 'label' | 'role' | 'kind' | 'states' | 'value'>,
+  platform: Platform,
+) => {
+  const isAndroid = platform === 'android';
+  let role = element.role
+    ? (SPOKEN_ROLES[element.role] ?? element.role)
+    : (SPOKEN_KINDS[element.kind] ?? '');
+  if (isAndroid) {
+    role = element.kind === 'input' ? 'edit box' : (ANDROID_SPOKEN_ROLES[role] ?? role);
+  }
+  // TalkBack leads with state and value by default; VoiceOver ends with them.
+  const parts = isAndroid
+    ? [...element.states, element.value, element.label, role]
+    : [element.label, element.value, role, ...element.states];
+  return parts.filter(Boolean).join(', ');
+};
