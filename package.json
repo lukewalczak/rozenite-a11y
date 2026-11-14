@@ -41,6 +41,9 @@
     "build": "rozenite build",
     "dev": "rozenite dev",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "oxlint --deny-warnings",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
     "test": "vitest --run",
     "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build",
     "changeset": "changeset"
@@ -55,6 +58,8 @@
     "@rozenite/vite-plugin": "^2.5.0",
     "@types/node": "^22.20.5",
     "@types/react": "~19.1.10",
+    "oxfmt": "^0.78.0",
+    "oxlint": "^1.93.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",

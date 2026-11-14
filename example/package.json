@@ -6,7 +6,8 @@
   "scripts": {
     "start": "WITH_ROZENITE=true expo start",
     "android": "WITH_ROZENITE=true expo start --android",
-    "ios": "WITH_ROZENITE=true expo start --ios"
+    "ios": "WITH_ROZENITE=true expo start --ios",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "expo": "~58.0.25",

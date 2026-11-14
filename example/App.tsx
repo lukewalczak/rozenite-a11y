@@ -81,11 +81,7 @@ export default function App() {
           </Pressable>
           <View style={styles.row}>
             <Text>Notifications</Text>
-            <Switch
-              accessibilityLabel="Notifications"
-              value={enabled}
-              onValueChange={setEnabled}
-            />
+            <Switch accessibilityLabel="Notifications" value={enabled} onValueChange={setEnabled} />
           </View>
         </Section>
 
