@@ -14,6 +14,8 @@ import {
   CHECKABLE_ROLES,
   INTERACTIVE_ROLES,
   VALUE_ROLES,
+  isTabBarRejectedOnAndroid,
+  type ReactNativeVersion,
 } from './roles';
 import { asObject, isUnknownArray, normalizeText } from './values';
 import { getAccessibleName, isMarkedUnimportant } from './visibility';
@@ -87,7 +89,10 @@ const NATIVE_SLIDER_HOSTS = new Set(['RNCSlider']);
 const isNativeSlider = (node: HostNode) => NATIVE_SLIDER_HOSTS.has(node.type);
 
 /** `role` and `accessibilityRole` are checked apart: Android applies both. */
-export const getInvalidRoleIssues = ({ ariaRole, nativeRole }: RoleInfo): AccessibilityIssue[] => {
+export const getInvalidRoleIssues = (
+  { ariaRole, nativeRole }: RoleInfo,
+  reactNativeVersion?: ReactNativeVersion,
+): AccessibilityIssue[] => {
   const issues: AccessibilityIssue[] = [];
   if (ariaRole && !ARIA_ROLES.has(ariaRole)) {
     issues.push({
@@ -106,16 +111,26 @@ export const getInvalidRoleIssues = ({ ariaRole, nativeRole }: RoleInfo): Access
         : `"${nativeRole}" is not an accessibilityRole React Native knows. iOS ignores it and Android throws.`,
     });
   }
+  if (
+    nativeRole === 'tabbar' &&
+    reactNativeVersion &&
+    isTabBarRejectedOnAndroid(reactNativeVersion)
+  ) {
+    issues.push({
+      rule: 'invalid-role',
+      severity: 'error',
+      message: '"tabbar" makes Android throw before React Native 0.88.',
+    });
+  }
   return issues;
 };
 
 /** Checks of the role itself and of the state and value that role is expected to carry. */
-export const getRoleIssues = ({
-  node,
-  kind,
-  role: roleInfo,
-}: InspectedNode): AccessibilityIssue[] => {
-  const issues = getInvalidRoleIssues(roleInfo);
+export const getRoleIssues = (
+  { node, kind, role: roleInfo }: InspectedNode,
+  reactNativeVersion?: ReactNativeVersion,
+): AccessibilityIssue[] => {
+  const issues = getInvalidRoleIssues(roleInfo, reactNativeVersion);
   const role = roleInfo.role ?? '';
 
   // A native switch and a text input report their own state.

@@ -297,6 +297,16 @@ describe('auditHostTree', () => {
       expect(rules([image], 'android')).toEqual([]);
     });
 
+    it('flags an invalid accessibilityRole on an image a screen reader does not stop on', () => {
+      expect(rules([node('RCTImageView', { accessibilityRole: 'heading' })], 'android')).toEqual([
+        'image-missing-label',
+        'invalid-role',
+      ]);
+      expect(
+        rules([node('RCTImageView', { accessibilityRole: 'heading', accessibilityLabel: 'Logo' })]),
+      ).toEqual(['not-accessible', 'invalid-role']);
+    });
+
     it('reports a focusable image without a label under the image rule', () => {
       expect(rules([node('RCTImageView', { accessible: true })])).toEqual(['image-missing-label']);
     });
@@ -359,6 +369,16 @@ describe('auditHostTree', () => {
       expect(audit([stack]).map((element) => element.label)).toEqual(['Details']);
     });
 
+    it('audits the top screen of a native stack when a preloaded screen follows it', () => {
+      const stack = node('RNSScreenStack', {}, [
+        node('RNSScreen', { activityState: 2 }, [label('Home')]),
+        node('RNSScreen', { activityState: 2 }, [label('Details')]),
+        node('RNSScreen', { activityState: 0 }, [label('Preloaded')]),
+      ]);
+
+      expect(audit([stack]).map((element) => element.label)).toEqual(['Details']);
+    });
+
     it('skips an inactive screen', () => {
       const tabs = node('RNSScreenContainer', {}, [
         node('RNSScreen', { activityState: 0 }, [label('Feed')]),
@@ -404,6 +424,17 @@ describe('auditHostTree', () => {
           ]),
         ]),
       ).toEqual(['invalid-role']);
+    });
+
+    it('flags accessibilityRole="tabbar" before React Native 0.88, where Android throws', () => {
+      const tabBar = [node('RCTView', { accessibilityRole: 'tabbar' }, [label('Home')])];
+      const rulesOn = (minor: number) =>
+        auditHostTree(tabBar, 'android', { major: 0, minor }).elements.flatMap((element) =>
+          element.issues.map((issue) => issue.rule),
+        );
+
+      expect(rulesOn(81)).toEqual(['invalid-role']);
+      expect(rulesOn(88)).toEqual([]);
     });
 
     it('flags a control whose role does not say it can be activated', () => {

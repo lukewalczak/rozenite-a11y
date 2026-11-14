@@ -11,6 +11,7 @@ import {
   isFontScalingDisabled,
   type InspectedNode,
 } from './props';
+import type { ReactNativeVersion } from './roles';
 import {
   FONT_SCALING_ISSUE,
   IMAGE_MISSING_LABEL_ISSUE,
@@ -43,7 +44,11 @@ type AuditResult = {
   measureById: Map<string, () => Frame | null>;
 };
 
-export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResult => {
+export const auditHostTree = (
+  roots: HostNode[],
+  platform: Platform,
+  reactNativeVersion?: ReactNativeVersion,
+): AuditResult => {
   const elements: AccessibilityElement[] = [];
   const measureById = new Map<string, () => Frame | null>();
 
@@ -97,7 +102,10 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
     const fontScalingIssues = isFontScalingDisabled(node, inspected.kind)
       ? [FONT_SCALING_ISSUE]
       : [];
-    const issues = [...getInvalidRoleIssues(inspected.role), ...fontScalingIssues];
+    const issues = [
+      ...getInvalidRoleIssues(inspected.role, reactNativeVersion),
+      ...fontScalingIssues,
+    ];
     if (issues.length > 0) {
       addUnfocusable({ ...inspected, interactive: false }, issues);
     }
@@ -133,20 +141,23 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
       );
 
     const getControlIssues = () => [
-      ...getRoleIssues(inspected),
+      ...getRoleIssues(inspected, reactNativeVersion),
       ...getBehaviorIssues(inspected, touchesBlocked),
       ...fontScalingIssues,
     ];
     const addNotAccessible = () =>
       addElement(inspected, getAccessibleName(node, platform), false, [
         getNotAccessibleIssue(node, platform),
-        ...getInvalidRoleIssues(inspected.role),
+        ...getInvalidRoleIssues(inspected.role, reactNativeVersion),
         ...fontScalingIssues,
       ]);
     // An element a screen reader does not stop on is listed for what it gets wrong,
     // or because TalkBack announces changes inside a live region it never stops on.
     const addIfNoteworthy = () => {
-      const issues = [...getInvalidRoleIssues(inspected.role), ...fontScalingIssues];
+      const issues = [
+        ...getInvalidRoleIssues(inspected.role, reactNativeVersion),
+        ...fontScalingIssues,
+      ];
       if (issues.length > 0 || isLiveRegion) {
         addUnfocusable(inspected, issues);
       }
@@ -192,9 +203,15 @@ export const auditHostTree = (roots: HostNode[], platform: Platform): AuditResul
     if (interactive) {
       addNotAccessible();
     } else if (kind === 'image' && props.accessible === undefined && !ownLabel) {
-      addElement(inspected, '', false, [IMAGE_MISSING_LABEL_ISSUE]);
+      addElement(inspected, '', false, [
+        IMAGE_MISSING_LABEL_ISSUE,
+        ...getInvalidRoleIssues(inspected.role, reactNativeVersion),
+      ]);
     } else if (kind === 'image' && props.accessible === undefined && platform === 'ios') {
-      addElement(inspected, ownLabel, false, [IMAGE_NOT_ACCESSIBLE_ISSUE]);
+      addElement(inspected, ownLabel, false, [
+        IMAGE_NOT_ACCESSIBLE_ISSUE,
+        ...getInvalidRoleIssues(inspected.role, reactNativeVersion),
+      ]);
     } else {
       addIfNoteworthy();
     }

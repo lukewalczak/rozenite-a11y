@@ -90,6 +90,7 @@ export const RozeniteAccessibility = (): ReactNode => {
         const { elements, minTouchTarget, measureById } = auditHostTree(
           collectHostNodes(roots, measureHostInstance),
           Platform.OS,
+          Platform.constants.reactNativeVersion,
         );
         measureByIdRef.current = measureById;
 

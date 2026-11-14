@@ -39,6 +39,12 @@ export const ARIA_ROLES = new Set(
   ).split(' '),
 );
 
+export type ReactNativeVersion = { major: number; minor: number };
+
+// Android's role enum has no `tabbar` before React Native 0.88, so the value throws there.
+export const isTabBarRejectedOnAndroid = ({ major, minor }: ReactNativeVersion): boolean =>
+  major === 0 && minor < 88;
+
 export const CHECKABLE_ROLES = new Set(['checkbox', 'radio', 'switch', 'togglebutton']);
 
 // A progress bar is left out: an indeterminate one has no value to announce.

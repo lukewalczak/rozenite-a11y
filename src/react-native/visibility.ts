@@ -27,7 +27,8 @@ export const getShownChildren = (node: HostNode): HostNode[] => {
   if (screens.length < 2) {
     return node.children;
   }
-  const top = screens[screens.length - 1];
+  // A preloaded screen is mounted after the top one, but is not shown.
+  const top = [...screens].reverse().find((screen) => screen.props.activityState !== 0);
   return node.children.filter((child) => !isScreen(child) || child === top);
 };
 
