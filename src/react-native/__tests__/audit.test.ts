@@ -889,6 +889,21 @@ describe('auditHostTree', () => {
     expect(named(['App', 'ScrollViewFooter', 'ScrollView', 'View'])).toBe('ScrollViewFooter');
   });
 
+  it('skips the wrapper React Native puts around pressable text', () => {
+    const named = (wrapper: string) =>
+      audit([
+        {
+          ...node('RCTText', { accessible: true, role: 'link', isPressable: true }, [
+            text('Terms'),
+          ]),
+          ownerPath: [wrapper, 'Text', 'LoginScreen'],
+        },
+      ])[0].component;
+
+    expect(named('NativePressableText')).toBe('LoginScreen');
+    expect(named('PressableText')).toBe('LoginScreen');
+  });
+
   it('prefers the component that rendered the element over a wrapper it was passed to', () => {
     const button: HostNode = {
       ...pressable({ role: 'button' }, [label('Save')]),

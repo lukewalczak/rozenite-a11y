@@ -29,8 +29,10 @@ Issues are **errors** when they stop a screen reader user, such as a control wit
 ## Installation
 
 ```bash
-npm install -D rozenite-a11y
+npm install rozenite-a11y
 ```
+
+Install it as a regular dependency: the import stays in your app code, so a release build that skips dev dependencies could not resolve it.
 
 ## Usage
 
@@ -64,7 +66,7 @@ An audit is a snapshot of the screen at the moment it runs. It does not drive a 
 
 ## Notes
 
-- The component is **development-only**: in production (`NODE_ENV === 'production'`) and on platforms other than iOS and Android it renders nothing. Production bundles leave the audit code out.
+- The component is **development-only**: in production and in tests (`NODE_ENV` set to `production` or `test`) and on platforms other than iOS and Android it renders nothing. Production bundles leave the audit code out.
 - The audit does not replace testing with VoiceOver or TalkBack, and it does not check colour contrast or focus order.
 - A control counts as ignoring touches when it or an ancestor sets `pointerEvents`. Other ways of disabling it, such as `editable={false}` on a text input, are not checked.
 - The reading order follows the component tree, which is an approximation of the order the platform uses.
