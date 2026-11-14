@@ -24,6 +24,8 @@ export type AccessibilityRuleId =
   | 'missing-value'
   | 'font-scaling-disabled'
   | 'unhandled-actions'
+  | 'unused-action-handler'
+  | 'missing-adjust-actions'
   | 'missing-disabled-state';
 
 export type AccessibilityIssue = {

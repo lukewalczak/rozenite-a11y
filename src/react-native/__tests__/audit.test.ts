@@ -469,7 +469,7 @@ describe('auditHostTree', () => {
         rules([
           node('RCTText', { accessible: true, role: 'slider', accessibilityLabel: 'Volume' }),
         ]),
-      ).toEqual(['missing-value', 'unhandled-actions']);
+      ).toEqual(['missing-value', 'missing-adjust-actions']);
     });
 
     it('flags an ARIA role passed as accessibilityRole and points at the role prop', () => {
@@ -572,7 +572,7 @@ describe('auditHostTree', () => {
             onAccessibilityAction: () => undefined,
           }),
         ]),
-      ).toEqual(['unhandled-actions']);
+      ).toEqual(['unused-action-handler']);
     });
 
     it('accepts actions with a handler', () => {
@@ -599,7 +599,7 @@ describe('auditHostTree', () => {
           onAccessibilityAction: () => undefined,
         });
 
-      expect(rules([slider(['activate'])])).toEqual(['unhandled-actions']);
+      expect(rules([slider(['activate'])])).toEqual(['missing-adjust-actions']);
       expect(rules([slider(['increment', 'decrement'])])).toEqual([]);
     });
 
@@ -613,7 +613,7 @@ describe('auditHostTree', () => {
             accessibilityValue: { text: '4' },
           }),
         ]),
-      ).toEqual(['unhandled-actions']);
+      ).toEqual(['missing-adjust-actions']);
     });
 
     it('reports both an unhandled action and missing increment on one element', () => {
@@ -627,8 +627,8 @@ describe('auditHostTree', () => {
         }),
       ]);
       expect(element.issues.map((issue) => issue.rule)).toEqual([
-        'unhandled-actions',
-        'unhandled-actions',
+        'unused-action-handler',
+        'missing-adjust-actions',
       ]);
     });
 

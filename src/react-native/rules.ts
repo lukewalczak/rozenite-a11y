@@ -59,14 +59,14 @@ const MISSING_DISABLED_STATE_ISSUE: AccessibilityIssue = {
 };
 
 const ACTIONS_WITHOUT_DECLARATION_ISSUE: AccessibilityIssue = {
-  rule: 'unhandled-actions',
+  rule: 'unused-action-handler',
   severity: 'warning',
   message:
     'Has onAccessibilityAction but declares no accessibilityActions, so a screen reader offers nothing to call it with.',
 };
 
 const ADJUSTABLE_WITHOUT_ACTIONS_ISSUE: AccessibilityIssue = {
-  rule: 'unhandled-actions',
+  rule: 'missing-adjust-actions',
   severity: 'warning',
   message:
     'An adjustable element is changed by swiping up and down, which needs the increment and decrement accessibilityActions.',
