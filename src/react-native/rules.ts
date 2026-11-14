@@ -82,6 +82,9 @@ const getMissingRoleIssue = (role: string | null): AccessibilityIssue => ({
   } that it can be activated. Use role="button" (or link, tab, checkbox…).`,
 });
 
+export const getMissingRoleIssues = ({ role }: RoleInfo): AccessibilityIssue[] =>
+  role != null && INTERACTIVE_ROLES.has(role) ? [] : [getMissingRoleIssue(role)];
+
 // Native sliders announce their value and handle increment and decrement
 // themselves; any other host with a slider role does neither.
 const NATIVE_SLIDER_HOSTS = new Set(['RNCSlider']);
@@ -91,7 +94,7 @@ const isNativeSlider = (node: HostNode) => NATIVE_SLIDER_HOSTS.has(node.type);
 /** `role` and `accessibilityRole` are checked apart: Android applies both. */
 export const getInvalidRoleIssues = (
   { ariaRole, nativeRole }: RoleInfo,
-  reactNativeVersion?: ReactNativeVersion,
+  reactNativeVersion: ReactNativeVersion,
 ): AccessibilityIssue[] => {
   const issues: AccessibilityIssue[] = [];
   if (ariaRole && !ARIA_ROLES.has(ariaRole)) {
@@ -111,11 +114,7 @@ export const getInvalidRoleIssues = (
         : `"${nativeRole}" is not an accessibilityRole React Native knows. iOS ignores it and Android throws.`,
     });
   }
-  if (
-    nativeRole === 'tabbar' &&
-    reactNativeVersion &&
-    isTabBarRejectedOnAndroid(reactNativeVersion)
-  ) {
+  if (nativeRole === 'tabbar' && isTabBarRejectedOnAndroid(reactNativeVersion)) {
     issues.push({
       rule: 'invalid-role',
       severity: 'error',
@@ -128,7 +127,7 @@ export const getInvalidRoleIssues = (
 /** Checks of the role itself and of the state and value that role is expected to carry. */
 export const getRoleIssues = (
   { node, kind, role: roleInfo }: InspectedNode,
-  reactNativeVersion?: ReactNativeVersion,
+  reactNativeVersion: ReactNativeVersion,
 ): AccessibilityIssue[] => {
   const issues = getInvalidRoleIssues(roleInfo, reactNativeVersion);
   const role = roleInfo.role ?? '';
@@ -235,9 +234,7 @@ export const getStopNaming = (
   if (kind === 'input') {
     const placeholder = normalizeText(props.placeholder);
     // Only Android names an input after the view it is labelled by.
-    const labelledBy =
-      platform === 'android' &&
-      hasLabelledBy(props.accessibilityLabelledBy ?? props['aria-labelledby']);
+    const labelledBy = platform === 'android' && hasLabelledBy(props.accessibilityLabelledBy);
     label = ownLabel || placeholder;
     if (!ownLabel && !labelledBy) {
       issues.push({
@@ -265,9 +262,8 @@ export const getStopNaming = (
     );
   }
 
-  const isActivatable = role.role != null && INTERACTIVE_ROLES.has(role.role);
-  if (interactive && (kind === 'view' || kind === 'text' || kind === 'image') && !isActivatable) {
-    issues.push(getMissingRoleIssue(role.role));
+  if (interactive && (kind === 'view' || kind === 'text' || kind === 'image')) {
+    issues.push(...getMissingRoleIssues(role));
   }
 
   return { label, issues };

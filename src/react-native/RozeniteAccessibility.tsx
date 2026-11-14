@@ -116,7 +116,7 @@ export const RozeniteAccessibility = (): ReactNode => {
         const origin = container
           ? await Promise.race([
               new Promise<{ x: number; y: number }>((resolve) =>
-                container.measureInWindow((x, y) => resolve({ x: x || 0, y: y || 0 })),
+                container.measureInWindow((x, y) => resolve({ x, y })),
               ),
               cancelled,
             ])

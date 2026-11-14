@@ -32,7 +32,7 @@ export const getFiberRoots = (): FiberLike[] | null => {
   const roots: FiberLike[] = [];
   for (const rendererId of hook.renderers.keys()) {
     for (const root of hook.getFiberRoots(rendererId)) {
-      if (root?.current) {
+      if (root.current) {
         roots.push(root.current);
       }
     }

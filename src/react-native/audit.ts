@@ -19,6 +19,7 @@ import {
   getBehaviorIssues,
   getInvalidRoleIssues,
   getMinTouchTarget,
+  getMissingRoleIssues,
   getNestedIssue,
   getNotAccessibleIssue,
   getRoleIssues,
@@ -47,7 +48,7 @@ type AuditResult = {
 export const auditHostTree = (
   roots: HostNode[],
   platform: Platform,
-  reactNativeVersion?: ReactNativeVersion,
+  reactNativeVersion: ReactNativeVersion,
 ): AuditResult => {
   const elements: AccessibilityElement[] = [];
   const measureById = new Map<string, () => Frame | null>();
@@ -153,8 +154,9 @@ export const auditHostTree = (
       ]);
     // An element a screen reader does not stop on is listed for what it gets wrong,
     // or because TalkBack announces changes inside a live region it never stops on.
-    const addIfNoteworthy = () => {
+    const addIfNoteworthy = (roleIssues: AccessibilityIssue[] = []) => {
       const issues = [
+        ...roleIssues,
         ...getInvalidRoleIssues(inspected.role, reactNativeVersion),
         ...fontScalingIssues,
       ];
@@ -165,9 +167,12 @@ export const auditHostTree = (
 
     if (insideAccessible) {
       // The parent is one accessibility element; its descendants are folded into it.
-      // Links inside a paragraph stay reachable through the paragraph itself.
-      if (!interactive || node.type === 'RCTVirtualText') {
+      if (!interactive) {
         addIfNoteworthy();
+      } else if (node.type === 'RCTVirtualText') {
+        // Pressable text inside a paragraph is reached through the paragraph, and
+        // only when its role tells the platform to expose it.
+        addIfNoteworthy(getMissingRoleIssues(inspected.role));
       } else if (platform === 'ios' ? optedOut : !isScreenReaderStop(node, kind, platform)) {
         addNotAccessible();
       } else if (platform === 'ios') {

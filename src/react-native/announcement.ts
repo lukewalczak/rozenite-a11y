@@ -27,7 +27,10 @@ const ANDROID_SPOKEN_ROLES: Record<string, string> = {
 };
 
 export const getAnnouncement = (
-  element: Pick<AccessibilityElement, 'label' | 'role' | 'kind' | 'states' | 'value'>,
+  element: Pick<AccessibilityElement, 'label' | 'kind' | 'states' | 'value'> & {
+    /** The role the platform applies, which is not always the declared one. */
+    role: string | null;
+  },
   platform: Platform,
 ) => {
   const isAndroid = platform === 'android';

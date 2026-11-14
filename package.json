@@ -40,7 +40,7 @@
   "scripts": {
     "build": "rozenite build",
     "dev": "rozenite dev",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json",
     "lint": "oxlint --deny-warnings",
     "format": "oxfmt",
     "format:check": "oxfmt --check",

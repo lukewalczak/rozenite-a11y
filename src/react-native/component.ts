@@ -33,9 +33,9 @@ const FRAMEWORK_COMPONENTS = new Set([
   'VirtualizedSectionList',
 ]);
 
-// Wrappers React names after what they wrap, and the components of
-// react-native-screens, community modules and react-native-gesture-handler.
-const FRAMEWORK_COMPONENT_PATTERN = /^(Animated|Memo|ForwardRef)\(|^RN[SC][A-Z]|^RNGestureHandler/;
+// React Native's animated wrappers, and the components of react-native-screens,
+// community modules and react-native-gesture-handler.
+const FRAMEWORK_COMPONENT_PATTERN = /^Animated\(|^RN[SC][A-Z]|^RNGestureHandler/;
 
 const isFrameworkComponent = (name: string) =>
   FRAMEWORK_COMPONENTS.has(name) || FRAMEWORK_COMPONENT_PATTERN.test(name);

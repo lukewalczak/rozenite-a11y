@@ -11,10 +11,9 @@ const getKind = (type: string): AccessibilityElementKind => {
   return 'view';
 };
 
-export const getLabel = (node: HostNode): string =>
-  normalizeText(node.props.accessibilityLabel) ||
-  normalizeText(node.props['aria-label']) ||
-  normalizeText(node.props.alt);
+// React Native's components turn `aria-*` and `alt` into the accessibility props read
+// here and below. A raw one that reaches a host was not converted, and native ignores it.
+export const getLabel = (node: HostNode): string => normalizeText(node.props.accessibilityLabel);
 
 export type RoleInfo = {
   ariaRole: string;
@@ -49,7 +48,7 @@ const isInteractive = (node: HostNode, kind: AccessibilityElementKind, role: str
   (role != null && INTERACTIVE_ROLES.has(role));
 
 export const readState = (node: HostNode, key: string): unknown =>
-  asObject(node.props.accessibilityState)[key] ?? node.props[`aria-${key}`];
+  asObject(node.props.accessibilityState)[key];
 
 const getStates = (node: HostNode, kind: AccessibilityElementKind): string[] => {
   const read = (key: string) => readState(node, key);
@@ -60,8 +59,8 @@ const getStates = (node: HostNode, kind: AccessibilityElementKind): string[] => 
   if (kind === 'switch' && typeof switchValue === 'boolean') {
     states.push(switchValue ? 'on' : 'off');
   }
-  // Only Text and Switch act on a `disabled` prop; a View ignores it.
-  const disabledProp = (kind === 'text' || kind === 'switch') && node.props.disabled === true;
+  // The iOS switch takes `disabled` as a prop of its own; a View ignores it.
+  const disabledProp = kind === 'switch' && node.props.disabled === true;
   if (read('disabled') === true || disabledProp) states.push('disabled');
   if (read('selected') === true) states.push('selected');
   const checked = read('checked');
@@ -77,12 +76,12 @@ const getStates = (node: HostNode, kind: AccessibilityElementKind): string[] => 
 
 export const getValue = (node: HostNode): string | null => {
   const value = asObject(node.props.accessibilityValue);
-  const text = normalizeText(value.text) || normalizeText(node.props['aria-valuetext']);
+  const text = normalizeText(value.text);
   if (text) {
     return text;
   }
   const read = (key: 'now' | 'min' | 'max') => {
-    const number = value[key] ?? node.props[`aria-value${key}`];
+    const number = value[key];
     return typeof number === 'number' ? number : null;
   };
   const now = read('now');

@@ -45,11 +45,15 @@ const HIDDEN = {
   importantForAccessibility: 'no-hide-descendants',
 };
 
-const audit = (roots: HostNode[], platform: Platform = 'ios') =>
-  auditHostTree(roots, platform).elements;
+const REACT_NATIVE = { major: 0, minor: 88 };
 
-const rules = (roots: HostNode[], platform: Platform = 'ios') =>
-  audit(roots, platform).flatMap((element) => element.issues.map((issue) => issue.rule));
+const audit = (roots: HostNode[], platform: Platform = 'ios', reactNativeVersion = REACT_NATIVE) =>
+  auditHostTree(roots, platform, reactNativeVersion).elements;
+
+const rules = (roots: HostNode[], platform: Platform = 'ios', reactNativeVersion = REACT_NATIVE) =>
+  audit(roots, platform, reactNativeVersion).flatMap((element) =>
+    element.issues.map((issue) => issue.rule),
+  );
 
 describe('auditHostTree', () => {
   it('names a control after its text and announces the role', () => {
@@ -80,6 +84,12 @@ describe('auditHostTree', () => {
     expect(elements).toHaveLength(1);
     expect(elements[0].issues).toEqual([
       expect.objectContaining({ rule: 'missing-label', severity: 'error' }),
+    ]);
+  });
+
+  it('ignores a raw aria-label, which only reaches a host that does not convert it', () => {
+    expect(rules([node('RCTSwitch', { value: true, 'aria-label': 'Wi-Fi' })])).toEqual([
+      'missing-label',
     ]);
   });
 
@@ -169,12 +179,12 @@ describe('auditHostTree', () => {
     });
 
     it('counts a labelling view only on Android, and only when one is named', () => {
-      const input = node('RCTSinglelineTextInputView', { 'aria-labelledby': 'emailLabel' });
+      const labelledBy = { accessibilityLabelledBy: ['emailLabel'] };
 
-      expect(rules([input], 'ios')).toEqual(['input-missing-label']);
-      expect(
-        rules([node('AndroidTextInput', { 'aria-labelledby': 'emailLabel' })], 'android'),
-      ).toEqual([]);
+      expect(rules([node('RCTSinglelineTextInputView', labelledBy)], 'ios')).toEqual([
+        'input-missing-label',
+      ]);
+      expect(rules([node('AndroidTextInput', labelledBy)], 'android')).toEqual([]);
       expect(rules([node('AndroidTextInput', { accessibilityLabelledBy: [] })], 'android')).toEqual(
         ['input-missing-label'],
       );
@@ -259,13 +269,16 @@ describe('auditHostTree', () => {
       expect(audit([pressable({ role: 'button' }, [label('Save')])])).toHaveLength(1);
     });
 
-    it('leaves links inside a paragraph alone', () => {
-      const paragraph = node('RCTText', { accessible: true }, [
-        text('Read the '),
-        node('RCTVirtualText', { isPressable: true }, [text('terms')]),
-      ]);
+    it('expects pressable text inside a paragraph to have a role', () => {
+      const paragraph = (props: Record<string, unknown>) =>
+        node('RCTText', { accessible: true }, [
+          text('Read the '),
+          node('RCTVirtualText', { isPressable: true, ...props }, [text('terms')]),
+        ]);
 
-      expect(rules([paragraph])).toEqual([]);
+      expect(rules([paragraph({})])).toEqual(['missing-role']);
+      expect(rules([paragraph({})], 'android')).toEqual(['missing-role']);
+      expect(rules([paragraph({ accessibilityRole: 'link' })])).toEqual([]);
     });
 
     it('checks touch target and disabled state of a nested control', () => {
@@ -428,13 +441,10 @@ describe('auditHostTree', () => {
 
     it('flags accessibilityRole="tabbar" before React Native 0.88, where Android throws', () => {
       const tabBar = [node('RCTView', { accessibilityRole: 'tabbar' }, [label('Home')])];
-      const rulesOn = (minor: number) =>
-        auditHostTree(tabBar, 'android', { major: 0, minor }).elements.flatMap((element) =>
-          element.issues.map((issue) => issue.rule),
-        );
 
-      expect(rulesOn(81)).toEqual(['invalid-role']);
-      expect(rulesOn(88)).toEqual([]);
+      expect(rules(tabBar, 'android', { major: 0, minor: 87 })).toEqual(['invalid-role']);
+      expect(rules(tabBar, 'ios', { major: 0, minor: 87 })).toEqual(['invalid-role']);
+      expect(rules(tabBar, 'android', { major: 0, minor: 88 })).toEqual([]);
     });
 
     it('flags a control whose role does not say it can be activated', () => {
@@ -485,7 +495,7 @@ describe('auditHostTree', () => {
         pressable({ role: 'checkbox', ...props }, [label('Terms')]);
 
       expect(rules([checkbox({})])).toEqual(['missing-state']);
-      expect(rules([checkbox({ 'aria-checked': false })])).toEqual([]);
+      expect(rules([checkbox({ accessibilityState: { checked: false } })])).toEqual([]);
       expect(rules([checkbox({ accessibilityState: { checked: 'mixed' } })])).toEqual([]);
     });
 
@@ -515,11 +525,11 @@ describe('auditHostTree', () => {
         issues: [],
       });
 
-      expect(
-        audit([slider({ 'aria-valuenow': 4, 'aria-valuemin': 0, 'aria-valuemax': 10 })])[0].value,
-      ).toBe('40%');
+      expect(audit([slider({ accessibilityValue: { now: 4, min: 0, max: 10 } })])[0].value).toBe(
+        '40%',
+      );
       // A number alone is not announced: both platforms need its range.
-      expect(rules([slider({ 'aria-valuenow': 4 })])).toEqual(['missing-value']);
+      expect(rules([slider({ accessibilityValue: { now: 4 } })])).toEqual(['missing-value']);
     });
 
     it('accepts a progress bar without a value, which is how an indeterminate one looks', () => {
@@ -629,7 +639,6 @@ describe('auditHostTree', () => {
             accessible: true,
             role: 'slider',
             accessibilityLabel: 'Volume',
-            'aria-valuenow': 4,
           }),
         ]),
       ).toEqual([]);
@@ -672,9 +681,10 @@ describe('auditHostTree', () => {
     it('accepts it when the control is marked disabled', () => {
       expect(
         rules([
-          pressable({ role: 'button', pointerEvents: 'none', 'aria-disabled': true }, [
-            label('Pay'),
-          ]),
+          pressable(
+            { role: 'button', pointerEvents: 'none', accessibilityState: { disabled: true } },
+            [label('Pay')],
+          ),
         ]),
       ).toEqual([]);
     });
@@ -794,7 +804,9 @@ describe('auditHostTree', () => {
   });
 
   it('words the announcement the way TalkBack does on Android', () => {
-    const checkbox = pressable({ role: 'checkbox', 'aria-checked': false }, [label('Terms')]);
+    const checkbox = pressable({ role: 'checkbox', accessibilityState: { checked: false } }, [
+      label('Terms'),
+    ]);
     const slider = node('RCTView', {
       accessible: true,
       role: 'slider',
@@ -889,7 +901,11 @@ describe('auditHostTree', () => {
 
   it('lets an element be measured again by id', () => {
     const frame: Frame = { x: 10, y: 20, width: 100, height: 50 };
-    const result = auditHostTree([pressable({ role: 'button' }, [label('Save')], frame)], 'ios');
+    const result = auditHostTree(
+      [pressable({ role: 'button' }, [label('Save')], frame)],
+      'ios',
+      REACT_NATIVE,
+    );
 
     expect(result.measureById.get(result.elements[0].id)?.()).toEqual(frame);
   });

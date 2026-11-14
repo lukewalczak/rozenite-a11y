@@ -18,17 +18,15 @@ export const getModalChild = (node: HostNode, platform: Platform): HostNode | un
         .find((child) => child.props.accessibilityViewIsModal === true && !isNotDisplayed(child))
     : undefined;
 
-/** The children on screen: all of them, except the screens a native stack covers. */
+/** The children on screen: all of them, except the screens a native stack covers or preloads. */
 export const getShownChildren = (node: HostNode): HostNode[] => {
   if (node.type !== 'RNSScreenStack') {
     return node.children;
   }
-  const screens = node.children.filter(isScreen);
-  if (screens.length < 2) {
-    return node.children;
-  }
   // A preloaded screen is mounted after the top one, but is not shown.
-  const top = [...screens].reverse().find((screen) => screen.props.activityState !== 0);
+  const top = [...node.children]
+    .reverse()
+    .find((child) => isScreen(child) && child.props.activityState !== 0);
   return node.children.filter((child) => !isScreen(child) || child === top);
 };
 
