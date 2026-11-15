@@ -1,6 +1,6 @@
 {
   "name": "rozenite-a11y",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Accessibility inspector for React Native DevTools, built on Rozenite.",
   "license": "MIT",
   "homepage": "https://github.com/lukewalczak/rozenite-a11y#readme",
