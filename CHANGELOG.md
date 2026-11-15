@@ -1,5 +1,11 @@
 # rozenite-a11y
 
+## 0.1.1
+
+### Patch Changes
+
+- [`4ceb195`](https://github.com/lukewalczak/rozenite-a11y/commit/4ceb195aecd4cab8cefee33bd70f94909e2cc8b7) Thanks [@lukewalczak](https://github.com/lukewalczak)! - Use "An" before roles that start with a vowel in the `missing-value` message ("An adjustable has to announce its current value").
+
 ## 0.1.0
 
 ### Minor Changes
