@@ -149,7 +149,7 @@ export const getRoleIssues = (
     issues.push({
       rule: 'missing-value',
       severity: 'warning',
-      message: `A ${role} has to announce its current value. Set accessibilityValue.text, or now together with min and max (or aria-valuetext, or aria-valuenow with aria-valuemin and aria-valuemax).`,
+      message: `${/^[aeiou]/.test(role) ? 'An' : 'A'} ${role} has to announce its current value. Set accessibilityValue.text, or now together with min and max (or aria-valuetext, or aria-valuenow with aria-valuemin and aria-valuemax).`,
     });
   }
 
