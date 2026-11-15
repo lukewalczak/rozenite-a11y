@@ -64,8 +64,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Read next version
+        id: next-version
+        run: |
+          pnpm changeset status --output=changeset-status.json
+          echo "version=$(node -p "require('./changeset-status.json').releases.find((release) => release.name === 'rozenite-a11y').newVersion")" >> "$GITHUB_OUTPUT"
+          rm changeset-status.json
+
       - name: Create version pull request
         uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          pr-title: 'chore: release ${{ steps.next-version.outputs.version }}'
+          commit-message: 'chore: release ${{ steps.next-version.outputs.version }}'
 
   publish:
     name: Publish
