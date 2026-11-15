@@ -27,6 +27,16 @@ export const ACCESSIBILITY_ROLES = new Set(
   ).split(' '),
 );
 
+// Not values of `accessibilityRole`, so Android throws, but iOS turns them into traits.
+export const IOS_ONLY_ACCESSIBILITY_ROLES = new Set([
+  'disabled',
+  'heading',
+  'img',
+  'key',
+  'plays',
+  'selected',
+]);
+
 // Values of the `role` prop, which follows ARIA.
 export const ARIA_ROLES = new Set(
   (

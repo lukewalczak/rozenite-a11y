@@ -52,10 +52,10 @@ export type AccessibilityElement = {
   label: string;
   role: string | null;
   hint: string | null;
-  /** Current value of an adjustable element, e.g. a slider. */
+  /** Value from `accessibilityValue`, e.g. of a slider or a meter. */
   value: string | null;
   states: string[];
-  /** Names of the custom `accessibilityActions`. */
+  /** Names of the declared `accessibilityActions`, standard ones included. */
   actions: string[];
   /** Set when changes are announced without focus. */
   liveRegion: LiveRegion | null;

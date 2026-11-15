@@ -1,6 +1,6 @@
 import type { AccessibilityElementKind, Platform } from '../shared/types';
 import { TEXT_NODE_TYPE, type HostNode } from './host-tree';
-import { getLabel } from './props';
+import { getKind, getLabel } from './props';
 import { flattenStyle, normalizeText } from './values';
 
 const isScreen = (node: HostNode) => /^RNS(Modal|Stack)?Screen$/.test(node.type);
@@ -81,6 +81,19 @@ export const isScreenReaderStop = (
   return !isMarkedUnimportant(node, platform) && (accessible === true || isNativeStop);
 };
 
+// Android makes an accessible view focusable, and TalkBack reads a focusable
+// descendant as a stop of its own, not as part of the element around it.
+export const isSeparateAndroidStop = (node: HostNode, platform: Platform): boolean => {
+  if (platform !== 'android' || isMarkedUnimportant(node, platform)) {
+    return false;
+  }
+  const kind = getKind(node.type);
+  return (
+    node.props.accessible === true ||
+    ((kind === 'input' || kind === 'switch') && node.props.accessible !== false)
+  );
+};
+
 /** The text a screen reader assembles for an element that has no label of its own. */
 export const collectText = (node: HostNode, platform: Platform): string => {
   const parts: string[] = [];
@@ -89,7 +102,11 @@ export const collectText = (node: HostNode, platform: Platform): string => {
       parts.push(current.text ?? '');
       return;
     }
-    if (isHiddenFromScreenReader(current, platform) || isNotDisplayed(current)) {
+    if (
+      isHiddenFromScreenReader(current, platform) ||
+      isNotDisplayed(current) ||
+      isSeparateAndroidStop(current, platform)
+    ) {
       return;
     }
     const label = getLabel(current);

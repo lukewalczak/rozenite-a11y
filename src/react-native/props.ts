@@ -3,7 +3,7 @@ import type { HostNode } from './host-tree';
 import { ACCESSIBILITY_ROLES, ARIA_ROLES, INTERACTIVE_ROLES } from './roles';
 import { asObject, flattenStyle, isUnknownArray, normalizeText } from './values';
 
-const getKind = (type: string): AccessibilityElementKind => {
+export const getKind = (type: string): AccessibilityElementKind => {
   if (/TextInput/i.test(type)) return 'input';
   if (/Switch/i.test(type)) return 'switch';
   if (/Image/i.test(type)) return 'image';

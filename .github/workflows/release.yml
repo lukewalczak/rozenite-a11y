@@ -64,18 +64,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Only empty changesets release nothing, so there is no version to name the pull request after.
       - name: Read next version
         id: next-version
         run: |
           pnpm changeset status --output=changeset-status.json
-          echo "version=$(node -p "require('./changeset-status.json').releases.find((release) => release.name === 'rozenite-a11y').newVersion")" >> "$GITHUB_OUTPUT"
+          version=$(node -p "require('./changeset-status.json').releases.find((release) => release.name === 'rozenite-a11y')?.newVersion ?? ''")
           rm changeset-status.json
+          title="chore: remove empty changesets"
+          if [ -n "$version" ]; then title="chore: release $version"; fi
+          echo "title=$title" >> "$GITHUB_OUTPUT"
 
       - name: Create version pull request
         uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
-          pr-title: 'chore: release ${{ steps.next-version.outputs.version }}'
-          commit-message: 'chore: release ${{ steps.next-version.outputs.version }}'
+          pr-title: ${{ steps.next-version.outputs.title }}
+          commit-message: ${{ steps.next-version.outputs.title }}
 
   publish:
     name: Publish

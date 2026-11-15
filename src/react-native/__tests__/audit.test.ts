@@ -30,7 +30,9 @@ const text = (value: string): HostNode => ({
   measure: () => null,
 });
 
-const label = (value: string) => node('RCTText', { accessible: true }, [text(value)]);
+// Android passes no `accessible` for plain text (iOS passes `true`, which the audit
+// treats the same), so this Text stays part of the element around it.
+const label = (value: string) => node('RCTText', {}, [text(value)]);
 
 // What React Native's Pressable hands to its host view.
 const pressable = (
@@ -298,6 +300,37 @@ describe('auditHostTree', () => {
     });
   });
 
+  describe('naming', () => {
+    it('lists an accessible element nested in a control as its own stop on Android only', () => {
+      const tree = () => [
+        pressable({ role: 'button' }, [
+          node('RCTView', { accessible: true, accessibilityLabel: 'Logo' }),
+          label('Open'),
+        ]),
+      ];
+      const listed = (platform: Platform) =>
+        audit(tree(), platform).map(({ label, focusable }) => ({ label, focusable }));
+
+      expect(listed('android')).toEqual([
+        { label: 'Open', focusable: true },
+        { label: 'Logo', focusable: true },
+      ]);
+      expect(listed('ios')).toEqual([{ label: 'Logo Open', focusable: true }]);
+    });
+
+    it('leaves hidden children out of a control name and stops at a child label', () => {
+      const [button] = audit([
+        pressable({ role: 'button' }, [
+          node('RCTText', HIDDEN, [text('icon')]),
+          node('RCTView', { style: { display: 'none' } }, [label('Gone')]),
+          node('RCTView', { accessibilityLabel: 'Close' }, [label('×')]),
+        ]),
+      ]);
+
+      expect(button.label).toBe('Close');
+    });
+  });
+
   describe('images', () => {
     it('warns about an image with no label that is not marked decorative', () => {
       expect(rules([node('RCTImageView')])).toEqual(['image-missing-label']);
@@ -466,10 +499,36 @@ describe('auditHostTree', () => {
 
     it('expects a slider role on any host but a native slider to handle its value and actions', () => {
       expect(
-        rules([
-          node('RCTText', { accessible: true, role: 'slider', accessibilityLabel: 'Volume' }),
-        ]),
+        rules(
+          [node('RCTText', { accessible: true, role: 'slider', accessibilityLabel: 'Volume' })],
+          'android',
+        ),
       ).toEqual(['missing-value', 'missing-adjust-actions']);
+    });
+
+    it('flags role="slider" on iOS, which gives no trait, so VoiceOver cannot adjust it', () => {
+      const [slider] = audit([
+        node('RCTView', {
+          accessible: true,
+          role: 'slider',
+          accessibilityLabel: 'Volume',
+          accessibilityValue: { text: '4' },
+        }),
+      ]);
+
+      expect(slider.issues).toEqual([
+        expect.objectContaining({
+          rule: 'invalid-role',
+          severity: 'warning',
+          message: expect.stringContaining('accessibilityRole="adjustable"'),
+        }),
+      ]);
+      expect(slider.announcement).toBe('Volume, 4');
+      expect(
+        rules([
+          node('RNCSlider', { accessible: true, role: 'slider', accessibilityLabel: 'Volume' }),
+        ]),
+      ).toEqual([]);
     });
 
     it('flags an ARIA role passed as accessibilityRole and points at the role prop', () => {
@@ -483,6 +542,16 @@ describe('auditHostTree', () => {
         }),
       ]);
       expect(title.announcement).toBe('Title');
+      expect(title.issues[0].message).toContain('iOS applies it, but Android throws');
+      const [unknown] = audit([
+        node('RCTView', { accessible: true, accessibilityRole: 'foo', accessibilityLabel: 'Foo' }),
+      ]);
+      expect(unknown.issues).toEqual([
+        expect.objectContaining({
+          rule: 'invalid-role',
+          message: expect.stringContaining('iOS ignores it and Android throws'),
+        }),
+      ]);
     });
 
     it('accepts values of either prop', () => {
@@ -509,7 +578,7 @@ describe('auditHostTree', () => {
       const slider = (props: Record<string, unknown>) =>
         node('RCTView', {
           accessible: true,
-          role: 'slider',
+          accessibilityRole: 'adjustable',
           accessibilityLabel: 'Volume',
           accessibilityActions: [{ name: 'increment' }, { name: 'decrement' }],
           onAccessibilityAction: () => undefined,
@@ -521,7 +590,7 @@ describe('auditHostTree', () => {
       const [withText] = audit([slider({ accessibilityValue: { text: '40 percent' } })]);
       expect(withText).toMatchObject({
         value: '40 percent',
-        announcement: 'Volume, 40 percent, slider',
+        announcement: 'Volume, 40 percent, adjustable',
         issues: [],
       });
 
@@ -530,6 +599,17 @@ describe('auditHostTree', () => {
       );
       // A number alone is not announced: both platforms need its range.
       expect(rules([slider({ accessibilityValue: { now: 4 } })])).toEqual(['missing-value']);
+    });
+
+    it('uses the right article in the missing-value message', () => {
+      const message = (props: Record<string, unknown>) =>
+        audit(
+          [node('RCTView', { accessible: true, accessibilityLabel: 'Volume', ...props })],
+          'android',
+        )[0].issues.find((issue) => issue.rule === 'missing-value')?.message;
+
+      expect(message({ accessibilityRole: 'adjustable' })).toMatch(/^An adjustable /);
+      expect(message({ role: 'meter' })).toMatch(/^A meter /);
     });
 
     it('accepts a progress bar without a value, which is how an indeterminate one looks', () => {
@@ -599,37 +679,99 @@ describe('auditHostTree', () => {
           onAccessibilityAction: () => undefined,
         });
 
-      expect(rules([slider(['activate'])])).toEqual(['missing-adjust-actions']);
-      expect(rules([slider(['increment', 'decrement'])])).toEqual([]);
+      expect(rules([slider(['activate'])], 'android')).toEqual(['missing-adjust-actions']);
+      expect(rules([slider(['increment', 'decrement'])], 'android')).toEqual([]);
     });
 
-    it('treats role="slider" as adjustable', () => {
-      expect(
-        rules([
-          node('RCTView', {
-            accessible: true,
-            role: 'slider',
-            accessibilityLabel: 'Volume',
-            accessibilityValue: { text: '4' },
-          }),
-        ]),
-      ).toEqual(['missing-adjust-actions']);
-    });
-
-    it('reports both an unhandled action and missing increment on one element', () => {
-      const [element] = audit([
+    it('expects an adjustable element on iOS only to handle increment and decrement', () => {
+      const adjustable = (props: Record<string, unknown>) =>
         node('RCTView', {
           accessible: true,
           accessibilityRole: 'adjustable',
           accessibilityLabel: 'Volume',
           accessibilityValue: { now: 4, min: 0, max: 10 },
-          onAccessibilityAction: () => undefined,
+          ...props,
+        });
+
+      // VoiceOver calls the handler for increment and decrement without declared actions.
+      expect(rules([adjustable({ onAccessibilityAction: () => undefined })])).toEqual([]);
+      expect(audit([adjustable({})])[0].issues).toEqual([
+        expect.objectContaining({
+          rule: 'missing-adjust-actions',
+          message: expect.stringContaining('Add the handler'),
         }),
       ]);
+    });
+
+    it('treats role="slider" as adjustable on Android', () => {
+      expect(
+        rules(
+          [
+            node('RCTView', {
+              accessible: true,
+              role: 'slider',
+              accessibilityLabel: 'Volume',
+              accessibilityValue: { text: '4' },
+            }),
+          ],
+          'android',
+        ),
+      ).toEqual(['missing-adjust-actions']);
+    });
+
+    it('reports both a handler without declared actions and missing increment on Android', () => {
+      const [element] = audit(
+        [
+          node('RCTView', {
+            accessible: true,
+            accessibilityRole: 'adjustable',
+            accessibilityLabel: 'Volume',
+            accessibilityValue: { now: 4, min: 0, max: 10 },
+            onAccessibilityAction: () => undefined,
+          }),
+        ],
+        'android',
+      );
       expect(element.issues.map((issue) => issue.rule)).toEqual([
         'unused-action-handler',
         'missing-adjust-actions',
       ]);
+    });
+
+    it('flags an action without a string name, which crashes the app', () => {
+      const [element] = audit([
+        pressable({
+          role: 'button',
+          accessibilityLabel: 'Mail',
+          accessibilityActions: [{ name: 'delete' }, { label: 'Archive' }, { name: 1 }],
+          onAccessibilityAction: () => undefined,
+        }),
+      ]);
+
+      expect(element.issues).toEqual([
+        expect.objectContaining({
+          rule: 'unhandled-actions',
+          severity: 'error',
+          message: expect.stringContaining('has no name'),
+        }),
+      ]);
+    });
+
+    it('reports both declared actions without a handler and missing increment', () => {
+      expect(
+        rules(
+          [
+            node('RCTView', {
+              accessible: true,
+              accessibilityRole: 'adjustable',
+              accessibilityLabel: 'Volume',
+              accessibilityValue: { now: 4, min: 0, max: 10 },
+              accessibilityActions: [{ name: 'activate' }],
+            }),
+          ],
+          'android',
+        ),
+      ).toEqual(['unhandled-actions', 'missing-adjust-actions']);
     });
 
     it('leaves native sliders to handle increment and decrement themselves', () => {

@@ -105,7 +105,8 @@ export const RozeniteAccessibility = (): ReactNode => {
       rpc.handle('highlight', async ({ id }) => {
         const request = ++highlightRequestRef.current;
         const frame = id == null ? null : (measureByIdRef.current.get(id)?.() ?? null);
-        if (!frame) {
+        // A view no longer on screen measures as an empty rectangle at the origin.
+        if (!frame || frame.width <= 0 || frame.height <= 0) {
           setHighlight(null);
           return;
         }

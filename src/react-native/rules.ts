@@ -13,6 +13,7 @@ import {
   ARIA_ROLES,
   CHECKABLE_ROLES,
   INTERACTIVE_ROLES,
+  IOS_ONLY_ACCESSIBILITY_ROLES,
   VALUE_ROLES,
   isTabBarRejectedOnAndroid,
   type ReactNativeVersion,
@@ -72,6 +73,36 @@ const ADJUSTABLE_WITHOUT_ACTIONS_ISSUE: AccessibilityIssue = {
     'An adjustable element is changed by swiping up and down, which needs the increment and decrement accessibilityActions.',
 };
 
+// VoiceOver sends increment and decrement to the handler whether or not they are declared.
+const ADJUSTABLE_WITHOUT_HANDLER_ISSUE: AccessibilityIssue = {
+  rule: 'missing-adjust-actions',
+  severity: 'warning',
+  message:
+    'An adjustable element is changed by swiping up and down, which calls onAccessibilityAction with increment and decrement. Add the handler.',
+};
+
+const IOS_SLIDER_ROLE_ISSUE: AccessibilityIssue = {
+  rule: 'invalid-role',
+  severity: 'warning',
+  message:
+    'role="slider" gives no trait on iOS, so VoiceOver does not announce it as adjustable and swiping up or down does not change its value. Use accessibilityRole="adjustable" without role.',
+};
+
+const UNNAMED_ACTION_ISSUE: AccessibilityIssue = {
+  rule: 'unhandled-actions',
+  severity: 'error',
+  message:
+    'An accessibilityAction has no name, which crashes the app: on the old architecture once a screen reader inspects the element, on the New Architecture as soon as it mounts.',
+};
+
+// React Native requires a string `name` on every action; an empty one is accepted.
+const hasUnnamedAction = (node: HostNode) => {
+  const actions = node.props.accessibilityActions;
+  return (
+    isUnknownArray(actions) && actions.some((action) => typeof asObject(action).name !== 'string')
+  );
+};
+
 const getMissingRoleIssue = (role: string | null): AccessibilityIssue => ({
   rule: 'missing-role',
   severity: 'warning',
@@ -91,6 +122,16 @@ const NATIVE_SLIDER_HOSTS = new Set(['RNCSlider']);
 
 const isNativeSlider = (node: HostNode) => NATIVE_SLIDER_HOSTS.has(node.type);
 
+// iOS takes its traits from the role string, which knows `adjustable` but not `slider`.
+const isAdjustable = ({ node, role }: InspectedNode, platform: Platform) =>
+  !isNativeSlider(node) &&
+  (platform === 'ios'
+    ? role.role === 'adjustable'
+    : role.role != null && ADJUSTABLE_ROLES.has(role.role));
+
+const isIosSliderRole = ({ node, role }: InspectedNode, platform: Platform) =>
+  platform === 'ios' && role.role === 'slider' && !isNativeSlider(node);
+
 /** `role` and `accessibilityRole` are checked apart: Android applies both. */
 export const getInvalidRoleIssues = (
   { ariaRole, nativeRole }: RoleInfo,
@@ -109,9 +150,13 @@ export const getInvalidRoleIssues = (
       rule: 'invalid-role',
       // Not just unannounced: Android rejects the value and the view fails to mount.
       severity: 'error',
-      message: ARIA_ROLES.has(nativeRole)
-        ? `"${nativeRole}" is a value of the role prop, not of accessibilityRole. iOS ignores it and Android throws. Use role="${nativeRole}".`
-        : `"${nativeRole}" is not an accessibilityRole React Native knows. iOS ignores it and Android throws.`,
+      message: `${
+        ARIA_ROLES.has(nativeRole)
+          ? `"${nativeRole}" is a value of the role prop, not of accessibilityRole.`
+          : `"${nativeRole}" is not an accessibilityRole React Native knows.`
+      } ${IOS_ONLY_ACCESSIBILITY_ROLES.has(nativeRole) ? 'iOS applies it, but' : 'iOS ignores it and'} Android throws.${
+        ARIA_ROLES.has(nativeRole) ? ` Use role="${nativeRole}".` : ''
+      }`,
     });
   }
   if (nativeRole === 'tabbar' && isTabBarRejectedOnAndroid(reactNativeVersion)) {
@@ -126,11 +171,17 @@ export const getInvalidRoleIssues = (
 
 /** Checks of the role itself and of the state and value that role is expected to carry. */
 export const getRoleIssues = (
-  { node, kind, role: roleInfo }: InspectedNode,
+  inspected: InspectedNode,
+  platform: Platform,
   reactNativeVersion: ReactNativeVersion,
 ): AccessibilityIssue[] => {
+  const { node, kind, role: roleInfo } = inspected;
   const issues = getInvalidRoleIssues(roleInfo, reactNativeVersion);
   const role = roleInfo.role ?? '';
+
+  if (isIosSliderRole(inspected, platform)) {
+    issues.push(IOS_SLIDER_ROLE_ISSUE);
+  }
 
   // A native switch and a text input report their own state.
   if (kind !== 'switch' && kind !== 'input' && CHECKABLE_ROLES.has(role)) {
@@ -158,11 +209,18 @@ export const getRoleIssues = (
 
 /** Checks of custom actions and of a control that cannot be used but is not announced as such. */
 export const getBehaviorIssues = (
-  { node, role, interactive, states, actions }: InspectedNode,
+  inspected: InspectedNode,
   touchesBlocked: boolean,
+  platform: Platform,
 ): AccessibilityIssue[] => {
+  const { node, interactive, states, actions } = inspected;
   const issues: AccessibilityIssue[] = [];
   const hasHandler = typeof node.props.onAccessibilityAction === 'function';
+  const adjustable = isAdjustable(inspected, platform);
+
+  if (hasUnnamedAction(node)) {
+    issues.push(UNNAMED_ACTION_ISSUE);
+  }
 
   if (actions.length > 0 && !hasHandler) {
     issues.push({
@@ -170,14 +228,15 @@ export const getBehaviorIssues = (
       severity: 'error',
       message: `Declares accessibilityActions (${actions.join(', ')}) but has no onAccessibilityAction, so choosing one does nothing.`,
     });
-  } else if (actions.length === 0 && hasHandler) {
+  } else if (actions.length === 0 && hasHandler && !(adjustable && platform === 'ios')) {
     issues.push(ACTIONS_WITHOUT_DECLARATION_ISSUE);
   }
 
-  if (
-    role.role != null &&
-    ADJUSTABLE_ROLES.has(role.role) &&
-    !isNativeSlider(node) &&
+  if (adjustable && platform === 'ios' && !hasHandler) {
+    issues.push(ADJUSTABLE_WITHOUT_HANDLER_ISSUE);
+  } else if (
+    adjustable &&
+    platform !== 'ios' &&
     !(actions.includes('increment') && actions.includes('decrement'))
   ) {
     issues.push(ADJUSTABLE_WITHOUT_ACTIONS_ISSUE);

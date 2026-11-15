@@ -31,6 +31,8 @@ const Section = ({ title, children }: { title: string; children: ReactNode }) =>
 export default function App() {
   const [enabled, setEnabled] = useState(false);
   const [volume, setVolume] = useState(4);
+  const [zoom, setZoom] = useState(2);
+  const [speed, setSpeed] = useState(3);
   const [saved, setSaved] = useState(0);
 
   return (
@@ -77,11 +79,16 @@ export default function App() {
         <Section title="Nesting">
           <Pressable role="button" style={styles.row} onPress={noop}>
             <Text>Notifications</Text>
-            <Switch value={enabled} onValueChange={setEnabled} />
+            <Switch style={styles.switch} value={enabled} onValueChange={setEnabled} />
           </Pressable>
           <View style={styles.row}>
             <Text>Notifications</Text>
-            <Switch accessibilityLabel="Notifications" value={enabled} onValueChange={setEnabled} />
+            <Switch
+              accessibilityLabel="Notifications"
+              style={styles.switch}
+              value={enabled}
+              onValueChange={setEnabled}
+            />
           </View>
         </Section>
 
@@ -107,14 +114,45 @@ export default function App() {
               setVolume((value) => value + (nativeEvent.actionName === 'increment' ? 1 : -1))
             }
             style={styles.track}
-          />
+          >
+            <Text>Volume</Text>
+          </View>
           <View
             accessible
             accessibilityRole="adjustable"
             accessibilityLabel="Brightness"
             style={styles.track}
-          />
-          {/* "heading" belongs to `role`. iOS ignores it here; Android throws, so it is iOS only. */}
+          >
+            <Text>Brightness</Text>
+          </View>
+          {/* VoiceOver calls the handler without declared actions; TalkBack needs them. */}
+          <View
+            accessible
+            accessibilityRole="adjustable"
+            accessibilityLabel="Zoom"
+            accessibilityValue={{ min: 0, max: 10, now: zoom }}
+            onAccessibilityAction={({ nativeEvent }) =>
+              setZoom((value) => value + (nativeEvent.actionName === 'increment' ? 1 : -1))
+            }
+            style={styles.track}
+          >
+            <Text>Zoom</Text>
+          </View>
+          {/* iOS gives role="slider" no trait, so VoiceOver does not treat it as adjustable. */}
+          <View
+            accessible
+            role="slider"
+            accessibilityLabel="Speed"
+            accessibilityValue={{ min: 0, max: 10, now: speed }}
+            accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+            onAccessibilityAction={({ nativeEvent }) =>
+              setSpeed((value) => value + (nativeEvent.actionName === 'increment' ? 1 : -1))
+            }
+            style={styles.track}
+          >
+            <Text>Speed</Text>
+          </View>
+          {/* "heading" belongs to `role`. iOS still applies it; Android throws, so it is iOS only. */}
           {Platform.OS === 'ios' && (
             <Text accessibilityRole={'heading' as never}>
               ARIA role passed as accessibilityRole
@@ -238,7 +276,9 @@ const styles = StyleSheet.create({
     borderColor: '#ccc',
     paddingHorizontal: 12,
   },
-  track: { height: 48, backgroundColor: '#eee' },
+  // The iOS Switch sets `alignSelf: 'flex-start'`, which overrides the row's `alignItems`.
+  switch: { alignSelf: 'center' },
+  track: { height: 48, justifyContent: 'center', paddingHorizontal: 12, backgroundColor: '#eee' },
   images: { flexDirection: 'row', gap: 12 },
   icon: { width: 32, height: 32 },
 });

@@ -37,6 +37,7 @@ import {
   isMarkedUnimportant,
   isNotDisplayed,
   isScreenReaderStop,
+  isSeparateAndroidStop,
 } from './visibility';
 
 type AuditResult = {
@@ -94,7 +95,8 @@ export const auditHostTree = (
 
   // What a screen reader cannot reach is still on screen, so its text still has to
   // scale, and still mounts, so an invalid accessibilityRole still throws on Android.
-  // Hidden controls are not listed: navigation libraries hide off-screen pages this way.
+  // Only issues that matter without a screen reader are listed here, not hidden controls
+  // as such: navigation libraries hide off-screen pages this way.
   const visitScreenReaderHidden = (node: HostNode) => {
     if (node.type === TEXT_NODE_TYPE || node === modalHost || isNotDisplayed(node)) {
       return;
@@ -142,8 +144,8 @@ export const auditHostTree = (
       );
 
     const getControlIssues = () => [
-      ...getRoleIssues(inspected, reactNativeVersion),
-      ...getBehaviorIssues(inspected, touchesBlocked),
+      ...getRoleIssues(inspected, platform, reactNativeVersion),
+      ...getBehaviorIssues(inspected, touchesBlocked, platform),
       ...fontScalingIssues,
     ];
     const addNotAccessible = () =>
@@ -166,8 +168,18 @@ export const auditHostTree = (
     };
 
     if (insideAccessible) {
-      // The parent is one accessibility element; its descendants are folded into it.
-      if (!interactive) {
+      // The parent is one accessibility element; its descendants are folded into it,
+      // except what TalkBack focuses on its own.
+      const androidStop =
+        !interactive && isSeparateAndroidStop(node, platform)
+          ? getStopNaming(inspected, platform)
+          : null;
+      if (androidStop) {
+        addElement(inspected, androidStop.label, true, [
+          ...androidStop.issues,
+          ...getControlIssues(),
+        ]);
+      } else if (!interactive) {
         addIfNoteworthy();
       } else if (node.type === 'RCTVirtualText') {
         // Pressable text inside a paragraph is reached through the paragraph, and
