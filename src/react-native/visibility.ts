@@ -65,6 +65,11 @@ export const isHiddenFromScreenReader = (node: HostNode, platform: Platform): bo
 export const isMarkedUnimportant = (node: HostNode, platform: Platform): boolean =>
   platform !== 'ios' && node.props.importantForAccessibility === 'no';
 
+// `focusable` makes the Android view clickable, and TalkBack stops on a clickable view
+// even with accessible={false}. Pressable and the Touchables set it by default.
+const isAndroidClickable = (node: HostNode, platform: Platform) =>
+  platform === 'android' && node.props.focusable === true;
+
 // Android reads plain text even though React Native reports it as not accessible.
 export const isScreenReaderStop = (
   node: HostNode,
@@ -78,7 +83,10 @@ export const isScreenReaderStop = (
       : kind === 'text' && node.type !== 'RCTVirtualText'
         ? !(platform === 'ios' && accessible === false)
         : false;
-  return !isMarkedUnimportant(node, platform) && (accessible === true || isNativeStop);
+  return (
+    !isMarkedUnimportant(node, platform) &&
+    (accessible === true || isNativeStop || isAndroidClickable(node, platform))
+  );
 };
 
 // Android makes an accessible view focusable, and TalkBack reads a focusable
@@ -90,6 +98,7 @@ export const isSeparateAndroidStop = (node: HostNode, platform: Platform): boole
   const kind = getKind(node.type);
   return (
     node.props.accessible === true ||
+    isAndroidClickable(node, platform) ||
     ((kind === 'input' || kind === 'switch') && node.props.accessible !== false)
   );
 };

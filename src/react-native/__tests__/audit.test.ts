@@ -975,6 +975,32 @@ describe('auditHostTree', () => {
     ]);
   });
 
+  it('counts a focusable control with accessible={false} as a TalkBack stop', () => {
+    const button = pressable({ accessible: false, focusable: true }, [label('Save')]);
+
+    expect(audit([button], 'android')[0]).toMatchObject({
+      focusable: true,
+      label: 'Save',
+      issues: [expect.objectContaining({ rule: 'missing-role' })],
+    });
+    expect(rules([button], 'ios')).toEqual(['not-accessible']);
+  });
+
+  it('counts a nested focusable control with accessible={false} as a TalkBack stop', () => {
+    const tree = [
+      pressable({ role: 'button' }, [
+        label('Card'),
+        pressable({ role: 'button', accessible: false, focusable: true }, [label('Delete')]),
+      ]),
+    ];
+
+    expect(audit(tree, 'android')[1]).toMatchObject({
+      focusable: true,
+      label: 'Delete',
+      issues: [expect.objectContaining({ rule: 'nested-interactive' })],
+    });
+  });
+
   it('names the prop that hides a control from screen readers', () => {
     const message = (props: Record<string, unknown>, platform: Platform = 'ios') =>
       audit([node('RCTView', { role: 'button', ...props }, [label('Save')])], platform)[0].issues[0]
