@@ -1,5 +1,13 @@
 # rozenite-a11y
 
+## 0.1.3
+
+### Patch Changes
+
+- [`a6d4719`](https://github.com/lukewalczak/rozenite-a11y/commit/a6d4719c9fdabf35254a0904bd2421fd162b03e4) Thanks [@lukewalczak](https://github.com/lukewalczak)! - Declare the supported Node.js version (`>=20`) in `engines`, matching Rozenite.
+
+- [`3850c2a`](https://github.com/lukewalczak/rozenite-a11y/commit/3850c2aab8adf1f05f708a54641a595695d2c835) Thanks [@lukewalczak](https://github.com/lukewalczak)! - Android: a focusable control with `accessible={false}`, such as a Pressable, is a TalkBack stop and no longer gets `not-accessible`.
+
 ## 0.1.2
 
 ### Patch Changes
