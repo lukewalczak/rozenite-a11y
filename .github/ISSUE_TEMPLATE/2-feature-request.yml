@@ -1,0 +1,24 @@
+name: "\U0001F5E3 Feature request"
+description: Propose a new feature or audit rule for rozenite-a11y
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for your interest in the project and taking the time to fill out this feature request!
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Description
+      description: Clear and concise description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: suggested-solution
+    attributes:
+      label: Suggested solution
+      description: Describe the solution you have in mind. If you want to submit a PR for this issue, tell us in the description!
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Any other context or screenshots about the feature request here.

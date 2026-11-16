@@ -1,0 +1,50 @@
+name: "\U0001F41B Bug report"
+description: Report an issue with rozenite-a11y
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to fill out this bug report!
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+      placeholder: I am doing ... What I expect is ... What actually happening is ...
+    validations:
+      required: true
+  - type: textarea
+    id: system-info
+    attributes:
+      label: System Info
+      description: Output of `npx react-native info`
+      render: shell
+      placeholder: System, Binaries, Managers, SDKs, IDEs, Languages, etc.
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: rozenite-a11y version
+      placeholder: 0.1.2
+    validations:
+      required: true
+  - type: input
+    id: rozenite-version
+    attributes:
+      label: Rozenite version
+      placeholder: 2.5.0
+    validations:
+      required: true
+  - type: input
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: A link to a repository or snippet that reproduces the problem. A minimal reproduction is ideal.
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Steps to reproduce
+      description: The component code, the platform (iOS or Android) and what the panel reports versus what you expect.
+    validations:
+      required: true
