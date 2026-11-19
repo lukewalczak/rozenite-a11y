@@ -4,6 +4,8 @@ A [Rozenite](https://www.rozenite.dev) plugin for auditing the accessibility of 
 
 It reads the mounted component tree and lists what a screen reader would stop on, in order, with the text it would announce. Elements that break a rule are flagged, and selecting one outlines it in the app.
 
+![The accessibility panel in React Native DevTools with the selected element outlined in the app](https://raw.githubusercontent.com/lukewalczak/rozenite-a11y/main/.github/assets/preview.png)
+
 ## Features
 
 - **Reading order**: every element a screen reader can focus on the current screen, with its announcement (label, role, value and state). Elements listed only because they have an issue or are a live region are marked as not focusable.
