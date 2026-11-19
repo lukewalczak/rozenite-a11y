@@ -1,5 +1,11 @@
 # rozenite-a11y
 
+## 0.2.0
+
+### Minor Changes
+
+- [#6](https://github.com/lukewalczak/rozenite-a11y/pull/6) [`377056f`](https://github.com/lukewalczak/rozenite-a11y/commit/377056f8d67c5e9a7a3ec3b13493d73ba4a1c5f4) Thanks [@lukewalczak](https://github.com/lukewalczak)! - Register `run-audit` and `highlight` tools for Rozenite for Agents, so coding agents can audit the screen and outline elements without the DevTools panel.
+
 ## 0.1.3
 
 ### Patch Changes
