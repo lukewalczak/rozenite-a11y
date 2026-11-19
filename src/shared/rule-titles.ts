@@ -1,4 +1,4 @@
-import type { AccessibilityRuleId } from '../shared/types';
+import type { AccessibilityRuleId } from './types';
 
 export const RULE_TITLES: Record<AccessibilityRuleId, string> = {
   'missing-label': 'Missing label',

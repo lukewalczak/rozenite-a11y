@@ -166,6 +166,9 @@ importers:
 
   .:
     dependencies:
+      '@rozenite/agent-bridge':
+        specifier: ^2.5.0
+        version: 2.5.0(react@19.1.0)
       '@rozenite/plugin-bridge':
         specifier: ^2.5.0
         version: 2.5.0(react@19.1.0)
@@ -1819,6 +1822,12 @@ packages:
     resolution: {integrity: sha512-ee+c14ggUiM7lg4PtCjSBYU9O9dHp4FFespRnd5yj7SilUBJCL3x3aHlB+sIqbGjcPo3pEyODASnfKJuZ26YBw==}
     cpu: [x64]
     os: [win32]
+
+  '@rozenite/agent-bridge@2.5.0':
+    resolution: {integrity: sha512-Y84VcAo/UaqhAyJZMNWNUdCcFI+6J/0El73eNrCVx0A4uZEy/t5GHvQKJuN3lR2SkU59D7zd+bcqqu+H/9EYZw==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      react: '>=17'
 
   '@rozenite/agent-sdk@2.5.0':
     resolution: {integrity: sha512-qmbYpKhbSoFHJvA32KxiBFjv/mQhGjvyS3t317zYRmOiI2bsK1gJHlu/ldfCQFD8YQFZw25WkD527I4TydXAMA==}
@@ -6253,6 +6262,13 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.68.2':
     optional: true
+
+  '@rozenite/agent-bridge@2.5.0(react@19.1.0)':
+    dependencies:
+      '@rozenite/agent-shared': 2.5.0
+      '@rozenite/plugin-bridge': 2.5.0(react@19.1.0)
+      react: 19.1.0
+      tslib: 2.9.1
 
   '@rozenite/agent-sdk@2.5.0':
     dependencies:

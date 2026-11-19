@@ -49,6 +49,7 @@
     "changeset": "changeset"
   },
   "dependencies": {
+    "@rozenite/agent-bridge": "^2.5.0",
     "@rozenite/plugin-bridge": "^2.5.0"
   },
   "devDependencies": {

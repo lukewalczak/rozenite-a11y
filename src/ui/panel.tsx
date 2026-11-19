@@ -28,8 +28,8 @@ import {
   countIssues,
   filterElements,
   type ElementFilter,
-} from './filter-elements';
-import { RULE_TITLES } from './rule-titles';
+} from '../shared/filter-elements';
+import { RULE_TITLES } from '../shared/rule-titles';
 import { useAccessibilityAudit } from './use-accessibility-audit';
 import './globals.css';
 
