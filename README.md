@@ -12,6 +12,7 @@ It reads the mounted component tree and lists what a screen reader would stop on
 - **Filter and search**: show all elements, only those with issues or only live regions, and search by announcement, component, host view or rule.
 - **Element details**: label, role, hint, value, state, actions, live region, whether it is interactive, size and position of the selected element, its host view and the components above it.
 - **System settings**: screen reader, font scale, reduce motion and other accessibility settings of the device, read when the audit runs. The platform and the font scale are always shown, other settings only when they are on; one the platform does not have counts as off.
+- **Agent tools**: coding agents can run the audit and outline elements through [Rozenite for Agents](#agents), without the panel open.
 
 ## Requirements
 
@@ -65,6 +66,27 @@ Open the **Accessibility** panel in React Native DevTools. It audits the screen 
 The component is **development-only**: in production and in tests (`NODE_ENV` set to `production` or `test`) and on platforms other than iOS and Android it renders nothing. Production bundles leave the audit code out.
 
 The package also exports the audit's TypeScript types (`AccessibilityAudit`, `AccessibilityElement`, `AccessibilityRuleId`, …).
+
+## Agents
+
+`RozeniteAccessibility` also registers two [Rozenite for Agents](https://www.rozenite.dev) tools in the `rozenite-a11y` domain, so a coding agent can audit the app from the terminal. They work without the DevTools panel open.
+
+| Tool        | Does                                                                                                                                |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `run-audit` | Audits the screen the app is showing and returns the elements with their announcement, component path and issues, a page at a time. |
+| `highlight` | Outlines an element from the latest `run-audit` in the app, for example before a screenshot. Call it without `--id` to clear it.    |
+
+```bash
+npx rozenite agent rozenite-a11y run-audit
+npx rozenite agent rozenite-a11y run-audit --filter all --fields all
+npx rozenite agent rozenite-a11y run-audit --severity error
+npx rozenite agent rozenite-a11y highlight --id 12
+npx rozenite agent rozenite-a11y highlight
+```
+
+`run-audit` takes `--filter` (`issues`, the default, `all` or `live`), `--severity` (`error` or `warning`), `--search`, `--limit` and `--cursor`. It returns the platform, the minimum touch target, the system settings and a summary of the whole audit with every page. Each call without a cursor audits again, so call it after navigating and after a fix has reloaded; a cursor pages through the audit that produced it.
+
+The audit reads React props, so it names the components to fix but not what the platform finally exposes. To check that too, pair it with a tool that reads the native accessibility tree, such as [agent-device](https://github.com/callstack/agent-device): navigate and audit the native tree with it, run `run-audit` on the same screen, fix the components it names, and run both again. Elements can be matched by frame, which is in points on iOS and dp on Android.
 
 ## Rules
 

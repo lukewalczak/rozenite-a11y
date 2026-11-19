@@ -1,4 +1,4 @@
-import type { AccessibilityElement } from '../shared/types';
+import type { AccessibilityElement } from './types';
 import { RULE_TITLES } from './rule-titles';
 
 export const ELEMENT_FILTERS = ['all', 'issues', 'live'] as const;

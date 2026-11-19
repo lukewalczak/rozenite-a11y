@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AccessibilityElement } from '../../shared/types';
+import type { AccessibilityElement } from '../types';
 import { filterElements, type ElementFilter } from '../filter-elements';
 
 const element = (
